@@ -1,4 +1,4 @@
-let state={config:{keywords:[]},posts:[],stats:{}},level="",activePost=null;
+let state={config:{keywords:[]},posts:[],stats:{}},level="",activePost=null,pendingDelete=null;
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const time=s=>s?new Intl.DateTimeFormat("zh-TW",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}).format(new Date(s)):"—";
@@ -6,7 +6,7 @@ function toast(msg){const el=$("#toast");el.textContent=msg;el.classList.add("sh
 async function request(url,options){const r=await fetch(url,{headers:{"Content-Type":"application/json"},...options});const data=await r.json();if(!r.ok)throw new Error(data.error||"操作失敗");return data}
 function badge(level){return `<span class="badge ${level==="高需求"?"high":level==="中需求"?"medium":"low"}">${esc(level)}</span>`}
 function card(p){return `<article class="lead-card"><div class="card-top"><div class="profile"><span class="avatar">${esc((p.username||"?")[0].toUpperCase())}</span><div><strong>@${esc(p.username||"unknown")}</strong><small>${time(p.timestamp)}</small></div></div>${badge(p.level)}</div><p class="post-text">${esc(p.text)}</p><span class="keyword"># ${esc(p.keyword)}</span><div class="score"><span>需求分數</span><b>${p.score} / 100</b></div><button class="card-action" data-copy="${esc(p.id)}">查看建議文案 ✦</button></article>`}
-function row(p){return `<article class="lead-row"><div class="profile"><span class="avatar">${esc((p.username||"?")[0].toUpperCase())}</span><div><strong>@${esc(p.username||"unknown")}</strong><small>${time(p.timestamp)}</small></div></div><div><p class="post-text">${esc(p.text)}</p><span class="keyword">${esc(p.keyword)}</span></div>${badge(p.level)}<div class="row-actions"><button data-copy="${esc(p.id)}" title="查看文案">✦</button><button data-open="${esc(p.permalink)}" title="開啟貼文">↗</button></div></article>`}
+function row(p){return `<article class="lead-row"><div class="profile"><span class="avatar">${esc((p.username||"?")[0].toUpperCase())}</span><div><strong>@${esc(p.username||"unknown")}</strong><small>${time(p.timestamp)}</small></div></div><div><p class="post-text">${esc(p.text)}</p><span class="keyword">${esc(p.keyword)}</span></div>${badge(p.level)}<div class="row-actions"><button data-copy="${esc(p.id)}" title="查看文案">✦</button><button data-open="${esc(p.permalink)}" title="開啟貼文">↗</button><button class="delete-one" data-delete="${esc(p.id)}" title="刪除這筆">×</button></div></article>`}
 function render(){
   const s=state.stats,c=state.config;
   $("#todayBig").textContent=s.today||0;$("#totalStat").textContent=s.total||0;$("#highStat").textContent=s.high||0;$("#copyStat").textContent=s.replyReady||0;
@@ -32,9 +32,18 @@ async function collect(){
   catch(e){toast(e.message)}finally{btn.disabled=false;btn.innerHTML="<span>↗</span><b>立即蒐集</b><small>使用目前關鍵字</small>"}
 }
 function openCopy(id){activePost=state.posts.find(p=>p.id===id);if(!activePost)return;$("#dialogTitle").textContent=`@${activePost.username} · ${activePost.level}`;$("#dialogPost").textContent=activePost.text;$("#dialogCopy").value=activePost.copy||"";$("#copyDialog").showModal()}
+function askDelete(target){
+  pendingDelete=target;
+  const all=target==="all",post=all?null:state.posts.find(p=>p.id===target);
+  $("#confirmTitle").textContent=all?"清除全部搜尋資料？":"刪除這筆資料？";
+  $("#confirmText").textContent=all?`將永久刪除目前 ${state.posts.length} 筆貼文、分類與文案紀錄；關鍵字和排程設定會保留。`:`將永久刪除 @${post?.username||"unknown"} 的這筆貼文與建議文案。`;
+  $("#confirmDelete").textContent=all?"清除全部":"刪除這筆";
+  $("#confirmDialog").showModal();
+}
 document.addEventListener("click",async e=>{
-  const nav=e.target.closest("[data-view]"),goto=e.target.closest("[data-go]"),copy=e.target.closest("[data-copy]"),open=e.target.closest("[data-open]"),remove=e.target.closest("[data-remove-key]");
+  const nav=e.target.closest("[data-view]"),goto=e.target.closest("[data-go]"),copy=e.target.closest("[data-copy]"),open=e.target.closest("[data-open]"),remove=e.target.closest("[data-remove-key]"),del=e.target.closest("[data-delete]");
   if(nav)go(nav.dataset.view);if(goto)go(goto.dataset.go);if(copy)openCopy(copy.dataset.copy);if(open)window.open(open.dataset.open,"_blank","noopener");
+  if(del)askDelete(del.dataset.delete);
   if(remove){state.config.keywords.splice(Number(remove.dataset.removeKey),1);renderForm()}
 });
 $$(".segmented button").forEach(b=>b.onclick=()=>{$$(".segmented button").forEach(x=>x.classList.remove("selected"));b.classList.add("selected");level=b.dataset.level;renderList()});
@@ -42,6 +51,15 @@ $("#searchInput").addEventListener("input",renderList);$("#collectBtn").onclick=
 $("#keywordInput").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();const v=e.target.value.trim();if(v&&!state.config.keywords.includes(v)&&state.config.keywords.length<30)state.config.keywords.push(v);e.target.value="";renderForm()}});
 $("#configForm").onsubmit=async e=>{e.preventDefault();try{const data=await request("/api/config",{method:"PUT",body:JSON.stringify({keywords:state.config.keywords,target:$("#targetInput").value,schedule:$("#scheduleInput").value,tone:$("#toneInput").value,offer:$("#offerInput").value,active:$("#activeInput").checked})});state.config=data.config;render();toast("設定已儲存")}catch(err){toast(err.message)}};
 $("#closeDialog").onclick=()=>$("#copyDialog").close();
+$("#deleteAllBtn").onclick=()=>{if(state.posts.length)askDelete("all");else toast("目前沒有可刪除的資料")};
+$("#closeConfirm").onclick=$("#cancelDelete").onclick=()=>{$("#confirmDialog").close();pendingDelete=null};
+$("#confirmDelete").onclick=async()=>{
+  if(!pendingDelete)return;
+  const target=pendingDelete,all=target==="all";
+  $("#confirmDelete").disabled=true;$("#confirmDelete").textContent="刪除中…";
+  try{const result=await request(all?"/api/posts":`/api/posts/${encodeURIComponent(target)}`,{method:"DELETE"});$("#confirmDialog").close();pendingDelete=null;await load();toast(all?`已清除 ${result.deleted} 筆資料`:"已刪除這筆資料")}
+  catch(e){toast(e.message)}finally{$("#confirmDelete").disabled=false}
+};
 $("#copyBtn").onclick=async()=>{await navigator.clipboard.writeText($("#dialogCopy").value);await request(`/api/posts/${encodeURIComponent(activePost.id)}`,{method:"PATCH",body:JSON.stringify({copy:$("#dialogCopy").value,status:"已準備"})});toast("文案已複製")};
 $("#regenBtn").onclick=async()=>{try{$("#regenBtn").textContent="生成中…";const d=await request(`/api/posts/${encodeURIComponent(activePost.id)}/regenerate`,{method:"POST",body:"{}"});$("#dialogCopy").value=d.post.copy;toast("已重新生成")}catch(e){toast(e.message)}finally{$("#regenBtn").textContent="重新生成 ✦"}};
 load().catch(e=>toast(e.message));

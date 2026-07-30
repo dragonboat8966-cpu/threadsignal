@@ -1,0 +1,9 @@
+.head-buttons{display:flex;gap:9px}
+.danger-outline{border:1px solid #e7b0a5;background:#fff8f6;color:#b84f3c;border-radius:10px;padding:10px 14px;font-size:12px;cursor:pointer}
+.danger-outline:hover{background:#ffe8e2}
+.row-actions .delete-one{color:#b84f3c;border-color:#edc5bc}
+.confirm-dialog{max-width:430px;text-align:center}
+.danger-mark{display:grid;place-items:center;margin:0 auto 14px;width:44px;height:44px;border-radius:50%;background:#ffe1db;color:#b84f3c;font-weight:900;font-size:22px}
+.confirm-dialog p{color:var(--muted);line-height:1.7;margin:8px 0 24px}
+.danger-btn{border:0;background:#c55240;color:white;border-radius:10px;padding:10px 16px;cursor:pointer}
+.danger-btn:hover{background:#a94233}

@@ -214,6 +214,21 @@ async function api(req, res, url) {
     saveDb(db);
     return json(res, 200, { post });
   }
+  if (req.method === "DELETE" && url.pathname.startsWith("/api/posts/")) {
+    const id = decodeURIComponent(url.pathname.split("/").pop());
+    const index = db.posts.findIndex(p => p.id === id);
+    if (index === -1) return json(res, 404, { error: "找不到貼文" });
+    db.posts.splice(index, 1);
+    saveDb(db);
+    return json(res, 200, { deleted: 1, id });
+  }
+  if (req.method === "DELETE" && url.pathname === "/api/posts") {
+    const deleted = db.posts.length;
+    db.posts = [];
+    db.runs = [];
+    saveDb(db);
+    return json(res, 200, { deleted });
+  }
   if (req.method === "POST" && url.pathname.match(/^\/api\/posts\/[^/]+\/regenerate$/)) {
     const id = decodeURIComponent(url.pathname.split("/")[3]);
     const post = db.posts.find(p => p.id === id);
