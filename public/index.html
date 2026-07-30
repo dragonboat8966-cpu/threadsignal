@@ -37,7 +37,7 @@
     </section>
 
     <section id="leads" class="view">
-      <div class="section-head leads-head"><div><h2>商機池</h2><p>篩選、檢視並準備每一則回覆</p></div><div class="head-buttons"><button class="danger-outline" id="deleteAllBtn">清除全部</button><a class="outline" href="/api/export.csv">匯出 CSV ↓</a></div></div>
+      <div class="section-head leads-head"><div><h2>商機池</h2><p>僅收錄近 7 天貼文，系統會自動跨關鍵字與跨日去重</p></div><div class="head-buttons"><button class="danger-outline" id="deleteAllBtn">清除全部</button><a class="outline" href="/api/export.csv">匯出 CSV ↓</a></div></div>
       <div class="filters"><label class="search">⌕<input id="searchInput" placeholder="搜尋貼文、帳號或關鍵字"></label><div class="segmented"><button class="selected" data-level="">全部</button><button data-level="高需求">高需求</button><button data-level="中需求">中需求</button><button data-level="低需求">低需求</button></div></div>
       <div id="leadList" class="lead-list"></div>
     </section>
@@ -46,7 +46,7 @@
       <div class="settings-wrap">
         <div class="section-head"><div><h2>蒐集設定</h2><p>修改關鍵字、每日目標與文案策略</p></div></div>
         <form id="configForm">
-          <div class="panel"><div class="panel-title"><span>01</span><div><h3>監測關鍵字</h3><p>按 Enter 新增，最多 30 組</p></div></div><div id="keywordBox" class="keyword-box"><input id="keywordInput" placeholder="輸入關鍵字後按 Enter"></div></div>
+          <div class="panel"><div class="panel-title"><span>01</span><div><h3>監測關鍵字</h3><p>按 Enter 新增，最多 30 組；僅收錄近 7 天且未曾收錄的貼文</p></div></div><div id="keywordBox" class="keyword-box"><input id="keywordInput" placeholder="輸入關鍵字後按 Enter"></div></div>
           <div class="panel grid-2"><label><span>每日目標筆數</span><input id="targetInput" type="number" min="1" max="1000"></label><label><span>每日蒐集時間</span><input id="scheduleInput" type="time"></label></div>
           <div class="panel"><div class="panel-title"><span>02</span><div><h3>AI 文案策略</h3><p>讓每一則建議更符合你的品牌</p></div></div><div class="grid-2"><label><span>品牌語氣</span><select id="toneInput"><option>專業親切</option><option>活潑自然</option><option>精準直接</option><option>溫暖陪伴</option></select></label><label><span>服務主張</span><input id="offerInput" placeholder="例如：提供免費初步諮詢"></label></div></div>
           <div class="panel switch-row"><div><h3>每日自動蒐集</h3><p>伺服器運行時，依設定時間自動執行</p></div><label class="switch"><input id="activeInput" type="checkbox"><span></span></label></div>

@@ -71,6 +71,40 @@ function classify(text, keyword) {
     reason: score >= 80 ? "包含明確需求與時間／報價訊號" : score >= 58 ? "有需求意圖，但條件尚未完整" : "偏向資訊探索或一般討論"
   };
 }
+function postKey(post) {
+  if (post.id) return `id:${post.id}`;
+  if (usablePermalink(post.permalink)) return `url:${String(post.permalink).replace(/\/+$/, "").toLowerCase()}`;
+  return `content:${crypto.createHash("sha256").update(`${post.username || ""}|${post.text || ""}`).digest("hex")}`;
+}
+function usablePermalink(value) {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.pathname.replace(/\/+$/, "").length > 0;
+  } catch {
+    return false;
+  }
+}
+function postFingerprints(post) {
+  const keys = [];
+  if (post.id) keys.push(`id:${post.id}`);
+  if (usablePermalink(post.permalink)) keys.push(`url:${String(post.permalink).replace(/\/+$/, "").toLowerCase()}`);
+  keys.push(`content:${crypto.createHash("sha256").update(`${String(post.username || "").toLowerCase()}|${String(post.text || "").trim()}`).digest("hex")}`);
+  return keys;
+}
+function isWithinLastSevenDays(timestamp, now = Date.now()) {
+  const published = Date.parse(timestamp);
+  return Number.isFinite(published) && published >= now - 7 * 24 * 60 * 60 * 1000 && published <= now + 5 * 60 * 1000;
+}
+function uniquePosts(posts) {
+  const seen = new Set();
+  return posts.filter(post => {
+    const keys = postFingerprints(post);
+    if (keys.some(key => seen.has(key))) return false;
+    keys.forEach(key => seen.add(key));
+    return true;
+  });
+}
 function fallbackCopy(post, config) {
   const opener = post.score >= 80 ? "看到你正在找相關協助，這個需求我們可以快速幫上忙。" : "看到你的分享，這題剛好是我們熟悉的領域。";
   return `${opener}\n\n${config.offer || "可以先協助釐清需求並提供建議"}，會依你的情況給具體做法，不會硬推方案。方便的話可以私訊我需求、預算與希望完成的時間，我再幫你評估。`;
@@ -120,6 +154,7 @@ async function threadsPosts(keywords, target) {
   const token = process.env.THREADS_ACCESS_TOKEN;
   if (!token) return demoPosts(keywords, target);
   const posts = new Map();
+  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const perKeyword = Math.max(20, Math.ceil(target / keywords.length) + 10);
   for (const keyword of keywords) {
     let url = new URL("https://graph.threads.net/keyword_search");
@@ -133,7 +168,13 @@ async function threadsPosts(keywords, target) {
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Threads API ${response.status}: ${(await response.text()).slice(0, 240)}`);
       const result = await response.json();
-      for (const item of result.data || []) posts.set(item.id, { ...item, keyword, source: "threads" });
+      for (const item of result.data || []) {
+        if (!isWithinLastSevenDays(item.timestamp)) continue;
+        const prepared = { ...item, keyword, source: "threads" };
+        posts.set(postKey(prepared), prepared);
+      }
+      const pageTimestamps = (result.data || []).map(item => Date.parse(item.timestamp)).filter(Number.isFinite);
+      if (pageTimestamps.length && Math.max(...pageTimestamps) < cutoff) break;
       url = result.paging?.next ? new URL(result.paging.next) : null;
     }
   }
@@ -147,13 +188,14 @@ async function collect(mode = "auto") {
     const db = readDb();
     const config = db.config || DEFAULT_CONFIG;
     const raw = mode === "demo" ? demoPosts(config.keywords, config.target) : await threadsPosts(config.keywords, config.target);
-    const existing = new Set(db.posts.map(p => p.id));
-    const prepared = raw.filter(p => !existing.has(p.id)).map(p => ({ ...p, ...classify(p.text || "", p.keyword), status: "待聯繫" }));
+    const existing = new Set(db.posts.flatMap(postFingerprints));
+    const recentUnique = uniquePosts(raw).filter(p => isWithinLastSevenDays(p.timestamp));
+    const prepared = recentUnique.filter(p => !postFingerprints(p).some(key => existing.has(key))).map(p => ({ ...p, ...classify(p.text || "", p.keyword), status: "待聯繫" }));
     for (const post of prepared) {
       try { post.copy = await aiCopy(post, config); }
       catch (error) { post.copy = fallbackCopy(post, config); post.aiError = error.message; }
     }
-    db.posts = [...prepared, ...db.posts].slice(0, 5000);
+    db.posts = uniquePosts([...prepared, ...db.posts]).slice(0, 5000);
     db.runs.unshift({ id: crypto.randomUUID(), startedAt, finishedAt: new Date().toISOString(), count: prepared.length, source: raw[0]?.source || "none", ok: true });
     db.runs = db.runs.slice(0, 60);
     saveDb(db);
