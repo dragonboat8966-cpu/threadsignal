@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ThreadSignal — 商機雷達</title>
+  <meta name="description" content="Threads 關鍵字商機蒐集、需求分類與 AI 文案工作台">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="brandmark">T<span>●</span></span><div>ThreadSignal<small>商機雷達</small></div></div>
+    <nav>
+      <button class="nav active" data-view="dashboard"><span>⌁</span>總覽</button>
+      <button class="nav" data-view="leads"><span>◎</span>商機池 <b id="navCount">0</b></button>
+      <button class="nav" data-view="settings"><span>⚙</span>蒐集設定</button>
+    </nav>
+    <div class="sidebar-foot"><i></i><div><strong>每日自動運行</strong><small id="nextRun">尚未設定</small></div></div>
+  </aside>
+  <main>
+    <header><div><p class="eyebrow">THREADS LEAD INTELLIGENCE</p><h1 id="pageTitle">早安，今天也來找到真正需要你的人。</h1></div><div class="header-actions"><span class="live"><i></i>監測中</span><button class="icon-btn" id="refreshBtn" title="重新整理">↻</button></div></header>
+
+    <section id="dashboard" class="view active">
+      <div class="hero">
+        <div><span class="kicker">今日雷達</span><h2><strong id="todayBig">0</strong> 筆新商機</h2><p>系統已依需求強度排序，先從高意向對象開始對話。</p></div>
+        <button class="primary" id="collectBtn"><span>↗</span><b>立即蒐集</b><small>使用目前關鍵字</small></button>
+      </div>
+      <div class="stats">
+        <article><span class="stat-icon coral">⌁</span><div><small>資料庫貼文</small><strong id="totalStat">0</strong><em>累積蒐集</em></div></article>
+        <article><span class="stat-icon purple">↗</span><div><small>高需求商機</small><strong id="highStat">0</strong><em>優先跟進</em></div></article>
+        <article><span class="stat-icon mint">✦</span><div><small>文案已就緒</small><strong id="copyStat">0</strong><em>可直接使用</em></div></article>
+        <article><span class="stat-icon amber">◷</span><div><small>下次蒐集</small><strong id="scheduleStat">--:--</strong><em>每日自動</em></div></article>
+      </div>
+      <div class="section-head"><div><h3>高需求優先</h3><p>最值得現在開始對話的 Threads 貼文</p></div><button class="text-btn" data-go="leads">查看全部 →</button></div>
+      <div id="priorityGrid" class="lead-grid"></div>
+    </section>
+
+    <section id="leads" class="view">
+      <div class="section-head leads-head"><div><h2>商機池</h2><p>篩選、檢視並準備每一則回覆</p></div><a class="outline" href="/api/export.csv">匯出 CSV ↓</a></div>
+      <div class="filters"><label class="search">⌕<input id="searchInput" placeholder="搜尋貼文、帳號或關鍵字"></label><div class="segmented"><button class="selected" data-level="">全部</button><button data-level="高需求">高需求</button><button data-level="中需求">中需求</button><button data-level="低需求">低需求</button></div></div>
+      <div id="leadList" class="lead-list"></div>
+    </section>
+
+    <section id="settings" class="view">
+      <div class="settings-wrap">
+        <div class="section-head"><div><h2>蒐集設定</h2><p>修改關鍵字、每日目標與文案策略</p></div></div>
+        <form id="configForm">
+          <div class="panel"><div class="panel-title"><span>01</span><div><h3>監測關鍵字</h3><p>按 Enter 新增，最多 30 組</p></div></div><div id="keywordBox" class="keyword-box"><input id="keywordInput" placeholder="輸入關鍵字後按 Enter"></div></div>
+          <div class="panel grid-2"><label><span>每日目標筆數</span><input id="targetInput" type="number" min="1" max="1000"></label><label><span>每日蒐集時間</span><input id="scheduleInput" type="time"></label></div>
+          <div class="panel"><div class="panel-title"><span>02</span><div><h3>AI 文案策略</h3><p>讓每一則建議更符合你的品牌</p></div></div><div class="grid-2"><label><span>品牌語氣</span><select id="toneInput"><option>專業親切</option><option>活潑自然</option><option>精準直接</option><option>溫暖陪伴</option></select></label><label><span>服務主張</span><input id="offerInput" placeholder="例如：提供免費初步諮詢"></label></div></div>
+          <div class="panel switch-row"><div><h3>每日自動蒐集</h3><p>伺服器運行時，依設定時間自動執行</p></div><label class="switch"><input id="activeInput" type="checkbox"><span></span></label></div>
+          <div class="integration" id="integrationStatus"></div>
+          <button class="primary save" type="submit">儲存設定</button>
+        </form>
+      </div>
+    </section>
+  </main>
+  <div id="toast" class="toast"></div>
+  <dialog id="copyDialog"><button class="dialog-x" id="closeDialog">×</button><span class="kicker">AI 建議文案</span><h3 id="dialogTitle"></h3><p id="dialogPost"></p><textarea id="dialogCopy"></textarea><div class="dialog-actions"><button class="outline" id="regenBtn">重新生成 ✦</button><button class="primary" id="copyBtn">複製文案</button></div></dialog>
+  <script src="/app.js"></script>
+</body>
+</html>

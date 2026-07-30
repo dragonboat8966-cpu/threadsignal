@@ -1,0 +1,21 @@
+{
+  "name": "threadsignal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Threads 關鍵字商機蒐集、需求分類與 AI 文案工作台",
+  "scripts": {
+    "local": "node server.js",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "check": "node --check server.js && node --check public/app.js"
+  },
+  "dependencies": {
+    "next": "^15.4.5",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
