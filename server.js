@@ -124,6 +124,43 @@ async function aiCopy(post, config) {
   const data = await response.json();
   return data.output_text || fallbackCopy(post, config);
 }
+function matchingKeyword(text, keywords) {
+  const normalized = String(text || "").toLowerCase();
+  return keywords.find(keyword => normalized.includes(String(keyword).toLowerCase())) || null;
+}
+async function repliesForPost(post, keywords, token) {
+  if (!post.has_replies || !post.id) return [];
+  const replies = [];
+  let url = new URL(`https://graph.threads.net/${encodeURIComponent(post.id)}/replies`);
+  url.searchParams.set("fields", "id,username,text,timestamp,permalink,is_reply,root_post,replied_to,has_replies");
+  url.searchParams.set("limit", "50");
+  url.searchParams.set("reverse", "true");
+  url.searchParams.set("access_token", token);
+  let pages = 0;
+  try {
+    while (url && pages++ < 3) {
+      const response = await fetch(url);
+      if (!response.ok) return [];
+      const result = await response.json();
+      for (const reply of result.data || []) {
+        const keyword = matchingKeyword(reply.text, keywords);
+        if (!keyword || !isWithinLastSevenDays(reply.timestamp)) continue;
+        replies.push({
+          ...reply,
+          keyword,
+          source: "threads",
+          contentType: "留言",
+          parentPostId: post.id,
+          parentPermalink: post.permalink || ""
+        });
+      }
+      url = result.paging?.next ? new URL(result.paging.next) : null;
+    }
+  } catch {
+    return [];
+  }
+  return replies;
+}
 function demoPosts(keywords, target) {
   const needs = [
     "最近正在找能協助品牌內容的人，希望這週能開始，有推薦嗎？",
@@ -146,7 +183,8 @@ function demoPosts(keywords, target) {
       timestamp: new Date(Date.now() - i * 240000).toISOString(),
       permalink: "https://www.threads.com/",
       keyword,
-      source: "demo"
+      source: "demo",
+      contentType: i % 5 === 0 ? "留言" : "貼文"
     };
   });
 }
@@ -161,7 +199,7 @@ async function threadsPosts(keywords, target) {
     url.searchParams.set("q", keyword);
     url.searchParams.set("search_type", "RECENT");
     url.searchParams.set("limit", String(Math.min(perKeyword, 100)));
-    url.searchParams.set("fields", "id,username,text,timestamp,permalink");
+    url.searchParams.set("fields", "id,username,text,timestamp,permalink,has_replies,is_reply,root_post,replied_to");
     url.searchParams.set("access_token", token);
     let pages = 0;
     while (url && posts.size < target && pages++ < 10) {
@@ -170,7 +208,13 @@ async function threadsPosts(keywords, target) {
       const result = await response.json();
       for (const item of result.data || []) {
         if (!isWithinLastSevenDays(item.timestamp)) continue;
-        const prepared = { ...item, keyword, source: "threads" };
+        const prepared = {
+          ...item,
+          keyword,
+          source: "threads",
+          contentType: item.is_reply ? "留言" : "貼文",
+          parentPostId: item.root_post?.id || item.replied_to?.id || ""
+        };
         posts.set(postKey(prepared), prepared);
       }
       const pageTimestamps = (result.data || []).map(item => Date.parse(item.timestamp)).filter(Number.isFinite);
@@ -178,7 +222,11 @@ async function threadsPosts(keywords, target) {
       url = result.paging?.next ? new URL(result.paging.next) : null;
     }
   }
-  return [...posts.values()].slice(0, target);
+  const originals = [...posts.values()];
+  const replyParents = originals.filter(post => post.has_replies && !post.is_reply).slice(0, 50);
+  const discoveredReplies = [];
+  for (const post of replyParents) discoveredReplies.push(...await repliesForPost(post, keywords, token));
+  return uniquePosts([...originals, ...discoveredReplies]).slice(0, target);
 }
 async function collect(mode = "auto") {
   if (running) throw new Error("蒐集工作正在執行");
@@ -280,8 +328,8 @@ async function api(req, res, url) {
   }
   if (req.method === "GET" && url.pathname === "/api/export.csv") {
     const q = s => `"${String(s ?? "").replaceAll('"', '""')}"`;
-    const csv = "\ufeff" + ["需求度,分數,關鍵字,帳號,貼文,建議文案,狀態,時間,連結", ...db.posts.map(p =>
-      [p.level, p.score, p.keyword, p.username, p.text, p.copy, p.status, p.timestamp, p.permalink].map(q).join(",")
+    const csv = "\ufeff" + ["內容類型,需求度,分數,關鍵字,帳號,內容,建議文案,狀態,時間,連結,母貼文ID", ...db.posts.map(p =>
+      [p.contentType || "貼文", p.level, p.score, p.keyword, p.username, p.text, p.copy, p.status, p.timestamp, p.permalink, p.parentPostId || ""].map(q).join(",")
     )].join("\r\n");
     res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": "attachment; filename=threadsignal.csv" });
     return res.end(csv);
