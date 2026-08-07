@@ -1,6 +1,7 @@
 export const metadata = { title: "隱私政策｜ThreadSignal" };
 export default function Privacy() {
-  return <main className="document"><p className="eyebrow">PRIVACY POLICY</p><h1>隱私政策</h1><p className="updated">最後更新：2026 年 7 月 30 日</p>
+  return <main className="document"><p className="eyebrow">PRIVACY POLICY</p><h1>隱私政策</h1><p className="updated">最後更新：2026 年 8 月 7 日</p>
+    <h2>營運與資料責任主體</h2><p>ThreadSignal 由伊鑽企業社營運。伊鑽企業社負責本服務所處理資料的管理、安全與資料請求。</p>
     <h2>一、我們處理的資料</h2><p>ThreadSignal 透過 Meta Threads API，在使用者明確授權後取得公開貼文的文字、公開帳號名稱、發布時間、永久連結及 API 提供的公開識別碼。我們也會處理使用者設定的關鍵字、分類結果及文案草稿。</p>
     <h2>二、處理目的</h2><p>資料僅用於關鍵字搜尋、內容整理、需求強度判斷、產生待人工審核的回覆草稿，以及維持服務安全與品質。</p>
     <h2>三、我們不做的事</h2><p>我們不販售個人資料、不以本服務自動大量留言或私訊、不蒐集非公開 Threads 內容，也不以貼文推論健康、政治、宗教等敏感特徵。</p>

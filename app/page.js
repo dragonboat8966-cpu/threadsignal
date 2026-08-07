@@ -4,7 +4,7 @@ export default function Home() {
       <section className="heroLegal">
         <p className="eyebrow">THREADS LEAD INTELLIGENCE</p>
         <h1>把公開訊號，整理成<br />值得回應的真實需求。</h1>
-        <p className="lede">ThreadSignal 協助使用者依自訂關鍵字整理公開 Threads 貼文、判斷需求強度，並產生可供人工審核的回覆草稿。</p>
+        <p className="lede">ThreadSignal 由伊鑽企業社營運，提供使用者依自訂關鍵字搜尋及整理公開 Threads 貼文、排除重複結果、判斷需求強度，並產生可供人工審核的回覆草稿。</p>
         <div className="pillRow"><span>官方 API</span><span>人工複核</span><span>尊重使用者隱私</span></div>
       </section>
       <section className="cards">

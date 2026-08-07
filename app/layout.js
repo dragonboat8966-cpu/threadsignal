@@ -20,8 +20,8 @@ export default function RootLayout({ children }) {
         {children}
         <footer>
           <strong>ThreadSignal</strong>
-          <p>以公開資料與人工判斷，建立更尊重、更有價值的商業對話。</p>
-          <small>© 2026 ThreadSignal · 聯絡信箱：dragonboat8966@gmail.com</small>
+          <p>由伊鑽企業社營運，以公開資料與人工判斷，建立更尊重、更有價值的商業對話。</p>
+          <small>© 2026 伊鑽企業社 · 聯絡信箱：dragonboat8966@gmail.com</small>
         </footer>
       </body>
     </html>
