@@ -31,7 +31,9 @@ export default function ReviewDemo() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "搜尋失敗。");
       setResults(data.results || []);
-      setStatus(`找到 ${data.results?.length || 0} 筆近 7 日內且不重複的公開結果。`);
+      const diagnostics = data.diagnostics || {};
+      const rawCount = (diagnostics.recentRawCount || 0) + (diagnostics.topRawCount || 0);
+      setStatus(`找到 ${data.results?.length || 0} 筆近 7 日內且不重複的公開結果。Meta 原始回傳 ${rawCount} 筆（模式：${diagnostics.mode || "未知"}；超過 7 日：${diagnostics.olderThanSevenDays || 0}；缺少日期：${diagnostics.missingTimestamp || 0}）。`);
     } catch (error) {
       setStatus(error.message);
     } finally {
