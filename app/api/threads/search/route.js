@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { decryptSession, THREADS_SESSION_COOKIE } from "../../../../lib/threads-session";
+import { accountWithToken } from "../../../../lib/accounts";
 
 export const runtime = "nodejs";
 
@@ -31,6 +32,10 @@ export async function GET(request) {
   if (!session) {
     return NextResponse.json({ error: "Please connect a Threads account first." }, { status: 401 });
   }
+  const accessToken = session.accessToken || (await accountWithToken(session.userId))?.accessToken;
+  if (!accessToken) {
+    return NextResponse.json({ error: "Please reconnect your Threads account." }, { status: 401 });
+  }
 
   const query = new URL(request.url).searchParams.get("q")?.trim() || "";
   if (query.length < 1 || query.length > 100) {
@@ -40,9 +45,9 @@ export async function GET(request) {
   let recentItems;
   let topItems = [];
   try {
-    recentItems = await searchThreads(query, "RECENT", session.accessToken);
+    recentItems = await searchThreads(query, "RECENT", accessToken);
     if (recentItems.length === 0) {
-      topItems = await searchThreads(query, "TOP", session.accessToken);
+      topItems = await searchThreads(query, "TOP", accessToken);
     }
   } catch (error) {
     return NextResponse.json({

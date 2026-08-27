@@ -2,5 +2,9 @@
 data/
 node_modules/
 .next/
+.vercel/
 .pnpm-store/
 *.log
+
+.vercel
+.env*

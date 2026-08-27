@@ -42,10 +42,15 @@ export default function ReviewDemo() {
   }
 
   async function disconnect() {
-    await fetch("/api/auth/threads/logout", { method: "POST" });
+    if (!confirm("斷開後會停止自動蒐集，並刪除這個帳號在 ThreadSignal 的權杖、設定及搜尋資料。確定繼續？")) return;
+    const response = await fetch("/api/auth/threads/logout", { method: "POST" });
+    if (!response.ok) {
+      setStatus("斷開失敗，請稍後再試；目前不會清除瀏覽器連線狀態。");
+      return;
+    }
     setSession({ connected: false, username: "" });
     setResults([]);
-    setStatus("已斷開 Threads 帳號。");
+    setStatus("已停止自動蒐集、刪除雲端授權資料，並斷開 Threads 帳號。");
   }
 
   return (
