@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { encryptSession, THREADS_SESSION_COOKIE } from "../../../../lib/threads-session";
+import { saveAuthorizedAccount } from "../../../../lib/accounts";
 
 export const runtime = "nodejs";
 
@@ -58,6 +59,7 @@ export async function GET(request) {
     }
 
     let username = "";
+    let profileId = String(shortData.user_id || "");
     const profileUrl = new URL("https://graph.threads.net/me");
     profileUrl.search = new URLSearchParams({
       fields: "id,username",
@@ -67,12 +69,18 @@ export async function GET(request) {
     if (profileResponse.ok) {
       const profile = await profileResponse.json();
       username = profile.username || "";
+      profileId = String(profile.id || profileId);
     }
 
     const expiresIn = Number(longData.expires_in) || 60 * 24 * 60 * 60;
-    const session = encryptSession({
+    await saveAuthorizedAccount({
+      userId: profileId,
+      username,
       accessToken: longData.access_token,
-      userId: String(shortData.user_id || ""),
+      expiresAt: Date.now() + expiresIn * 1000
+    });
+    const session = encryptSession({
+      userId: profileId,
       username,
       expiresAt: Date.now() + expiresIn * 1000
     });
@@ -93,7 +101,8 @@ export async function GET(request) {
     });
     return response;
   } catch (error) {
-    return redirectWithError(origin, error.message || "Threads authorization failed.");
+    console.error("Threads OAuth callback failed", error);
+    return redirectWithError(origin, "Threads 連線失敗，請稍後再試；若持續發生，請聯絡服務管理者。");
   }
 }
 
