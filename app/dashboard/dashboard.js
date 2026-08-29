@@ -3,12 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import styles from "./dashboard.module.css";
 
+const defaultFilterRequirements = "只保留與居家空氣品質、過敏症狀困擾、空氣清淨機選購或使用、裝潢異味或 PM2.5 改善直接相關，且原文包含問題、需求、求助、比較、推薦、預算或購買意圖的內容。排除戰爭、政治、軍事、國際新聞、同字異義、比喻、純轉貼、品牌廣告、抽獎與沒有實際需求的閒聊。";
+
 const defaults = {
   keywords: [],
   target_per_day: 200,
   schedule: "08:30",
   tone: "專業親切",
   offer: "提供快速回覆與一對一需求評估",
+  ai_filter_enabled: true,
+  filter_requirements: defaultFilterRequirements,
+  ai_confidence_threshold: 75,
   active: true
 };
 
@@ -80,6 +85,26 @@ function DemandBadge({ lead }) {
   return <span className={`${styles.demandBadge} ${demandClass(lead.demand_level)}`}>
     {lead.demand_level || "未分類"}<b>{Number(lead.demand_score) || 0}</b>
   </span>;
+}
+
+function AiMatchBadge({ lead }) {
+  const confidence = Number(lead.ai_confidence);
+  if (lead.classification_source !== "openai" || !Number.isFinite(confidence)) return null;
+  return <span className={styles.aiMatchBadge}><Icon name="sparkles" size={12}/>AI 符合 {Math.round(confidence)}%</span>;
+}
+
+function filterSettingsChanged(previous = {}, next = {}) {
+  return Boolean(previous.ai_filter_enabled) !== Boolean(next.ai_filter_enabled)
+    || String(previous.filter_requirements || "").trim() !== String(next.filter_requirements || "").trim()
+    || Number(previous.ai_confidence_threshold || 75) !== Number(next.ai_confidence_threshold || 75);
+}
+
+function resultCount(result, ...keys) {
+  for (const key of keys) {
+    const value = Number(result?.[key]);
+    if (Number.isFinite(value)) return value;
+  }
+  return 0;
 }
 
 function EmptyState({ title, body, action, onAction }) {
@@ -244,14 +269,79 @@ export default function Dashboard() {
     }
   }
 
+  async function screenCandidates() {
+    const summary = { screenedCount: 0, acceptedCount: 0, rejectedCount: 0, pendingCount: undefined };
+    for (let pass = 0; pass < 10; pass += 1) {
+      const response = await fetch("/api/dashboard/screen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: 60 })
+      });
+      const result = await response.json();
+      summary.screenedCount += resultCount(result, "screenedCount");
+      summary.acceptedCount += resultCount(result, "acceptedCount", "keptCount", "accepted");
+      summary.rejectedCount += resultCount(result, "rejectedCount", "droppedCount", "rejected");
+      if (result.pendingCount !== undefined || result.remainingCount !== undefined) {
+        summary.pendingCount = Number(result.pendingCount ?? result.remainingCount) || 0;
+      }
+      if (!response.ok || result.error || Number(result.failedBatches) > 0) {
+        const error = new Error(result.error || "AI 語意篩選失敗");
+        error.screeningSummary = summary;
+        throw error;
+      }
+      if (result.skipped || summary.pendingCount === 0 || resultCount(result, "screenedCount") === 0) break;
+    }
+    return summary;
+  }
+
+  async function rescreenPending() {
+    setBusyAction("screen");
+    try {
+      const screened = await screenCandidates();
+      notify(`重新篩選完成：通過 ${resultCount(screened, "acceptedCount")} 筆、排除 ${resultCount(screened, "rejectedCount")} 筆、待判定 ${resultCount(screened, "pendingCount")} 筆。`);
+    } catch (screenError) {
+      const screened = screenError.screeningSummary || {};
+      notify(`重新篩選未完成：已通過 ${resultCount(screened, "acceptedCount")} 筆、已排除 ${resultCount(screened, "rejectedCount")} 筆、待判定 ${screened.pendingCount === undefined ? "其餘" : (Number(screened.pendingCount) || 0)} 筆。${screenError.message} 待判定內容不會顯示。`, "error");
+    } finally {
+      try {
+        await load({ quiet: true });
+      } catch (loadFailure) {
+        notify(loadFailure.message || "工作台更新失敗", "error");
+      }
+      setBusyAction("");
+    }
+  }
+
   async function collect() {
     setBusyAction("collect");
     try {
       const response = await fetch("/api/dashboard/collect", { method: "POST" });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "蒐集失敗");
-      if (result.skipped) notify(result.reason || "本次蒐集已略過。", "info");
-      else notify(`蒐集完成：新增 ${result.insertedCount || 0} 筆、排除重複 ${result.duplicateCount || 0} 筆，距目標尚差 ${result.shortfall || 0} 筆。`);
+      if (result.skipped) {
+        notify(result.reason || "本次蒐集已略過。", "info");
+      } else if (settings.ai_filter_enabled) {
+        const candidateCount = resultCount(result, "candidateCount", "insertedCount");
+        try {
+          const screened = await screenCandidates();
+          const acceptedCount = resultCount(screened, "acceptedCount");
+          const rejectedCount = resultCount(screened, "rejectedCount");
+          const pendingFallback = Math.max(0, candidateCount - acceptedCount - rejectedCount);
+          const pendingValue = screened.pendingCount;
+          const pendingCount = pendingValue === undefined ? pendingFallback : (Number(pendingValue) || 0);
+          notify(`AI 篩選完成：候選 ${candidateCount} 筆、通過 ${acceptedCount} 筆、排除 ${rejectedCount} 筆、待判定 ${pendingCount} 筆。`);
+        } catch (screenError) {
+          const screened = screenError.screeningSummary || {};
+          const acceptedCount = resultCount(screened, "acceptedCount");
+          const rejectedCount = resultCount(screened, "rejectedCount");
+          const pendingCount = screened.pendingCount === undefined
+            ? Math.max(0, candidateCount - acceptedCount - rejectedCount)
+            : (Number(screened.pendingCount) || 0);
+          notify(`AI 篩選未完成：候選 ${candidateCount} 筆、已通過 ${acceptedCount} 筆、已排除 ${rejectedCount} 筆、待判定 ${pendingCount} 筆。${screenError.message} 待判定內容不會顯示。`, "error");
+        }
+      } else {
+        notify(`蒐集完成：新增 ${result.insertedCount || 0} 筆、排除重複 ${result.duplicateCount || 0} 筆，距目標尚差 ${result.shortfall || 0} 筆。`);
+      }
       await load({ quiet: true });
     } catch (error) {
       setBusyAction("");
@@ -262,6 +352,7 @@ export default function Dashboard() {
   async function save(event) {
     event.preventDefault();
     setBusyAction("save");
+    const previousSettings = { ...defaults, ...(data?.settings || {}) };
     try {
       const response = await fetch("/api/dashboard/config", {
         method: "PUT",
@@ -273,7 +364,22 @@ export default function Dashboard() {
       const nextSettings = { ...defaults, ...result.settings, keywords: normalizeKeywords(result.settings?.keywords) };
       setSettings(nextSettings);
       setData(current => current ? { ...current, settings: result.settings } : current);
-      notify("蒐集設定已儲存。");
+      if (nextSettings.ai_filter_enabled && filterSettingsChanged(previousSettings, nextSettings)) {
+        try {
+          const screened = await screenCandidates();
+          const acceptedCount = resultCount(screened, "acceptedCount");
+          const rejectedCount = resultCount(screened, "rejectedCount");
+          const pendingCount = resultCount(screened, "pendingCount");
+          notify(`設定已儲存並重新篩選：通過 ${acceptedCount} 筆、排除 ${rejectedCount} 筆、待判定 ${pendingCount} 筆。`);
+          await load({ quiet: true });
+        } catch (screenError) {
+          const screened = screenError.screeningSummary || {};
+          notify(`設定已儲存，但 AI 尚未完成判定：已通過 ${resultCount(screened, "acceptedCount")} 筆、已排除 ${resultCount(screened, "rejectedCount")} 筆、待判定 ${screened.pendingCount === undefined ? "其餘" : (Number(screened.pendingCount) || 0)} 筆。${screenError.message} 待判定內容不會顯示。`, "error");
+          await load({ quiet: true });
+        }
+      } else {
+        notify("蒐集設定已儲存。");
+      }
     } catch (error) {
       notify(error.message, "error");
     } finally {
@@ -393,6 +499,8 @@ export default function Dashboard() {
   const title = viewLabels[view];
   const latestRun = data.runs?.[0];
   const copyReady = Number(stats.ready) || 0;
+  const pendingAiCount = Number(stats.pending) || 0;
+  const rejectedAiCount = Number(stats.rejected) || 0;
   const modalOpen = Boolean(activeLead || pendingDelete);
 
   return <div className={styles.dashboardRoot} data-dashboard-root>
@@ -452,6 +560,13 @@ export default function Dashboard() {
           <article className={styles.statCard}><span className={styles.statAmber}><Icon name="reply"/></span><div><b>{stats.replies || 0}</b><small>留言訊號</small></div><em>貼文與留言一起整理</em></article>
         </section>
 
+        {settings.ai_filter_enabled && <section className={styles.aiStatusStrip} aria-label="AI 語意篩選狀態">
+          <span><Icon name="sparkles" size={17}/></span>
+          <div><strong>AI 語意篩選已啟用</strong><small>關鍵字只負責找候選；只有 AI 判定符合且信心達 {Number(settings.ai_confidence_threshold) || 75}% 的內容才會顯示。</small></div>
+          <dl><div><dt>待判定</dt><dd>{pendingAiCount}</dd></div><div><dt>已排除</dt><dd>{rejectedAiCount}</dd></div></dl>
+          <button type="button" className={styles.aiScreenButton} onClick={rescreenPending} disabled={!pendingAiCount || Boolean(busyAction)}><Icon name="refresh" size={15}/>{busyAction === "screen" ? "判定中…" : "重新篩選待判定"}</button>
+        </section>}
+
         <section className={styles.prioritySection}>
           <div className={styles.sectionHeading}>
             <div><p className={styles.eyebrow}>PRIORITY OPPORTUNITIES</p><h2>高需求優先</h2></div>
@@ -463,6 +578,7 @@ export default function Dashboard() {
               <div className={styles.sourceLine}><span className={styles.sourceIcon}><Icon name={lead.content_type === "留言" ? "reply" : "post"} size={16}/></span><strong>@{lead.username || "threads_user"}</strong><time>{formatDate(lead.published_at, true)}</time></div>
               <p>{lead.body || "（沒有文字內容）"}</p>
               <div className={styles.keywordLine}>{normalizeKeywords(lead.keywords).slice(0, 3).map(keyword => <span key={keyword}>#{keyword}</span>)}</div>
+              {lead.classification_source === "openai" && <div className={styles.semanticEvidence}><AiMatchBadge lead={lead}/><small>{lead.relevance_reason || "AI 已確認內容符合篩選需求"}</small></div>}
               <footer><button type="button" onClick={() => openCopy(lead)}>查看建議文案</button>{lead.permalink && <a href={lead.permalink} target="_blank" rel="noreferrer" aria-label="在 Threads 查看"><Icon name="external" size={18}/></a>}</footer>
             </article>)}
           </div> : (
@@ -500,7 +616,11 @@ export default function Dashboard() {
               <p>{lead.body || "（沒有文字內容）"}</p>
               <div className={styles.keywordLine}>{normalizeKeywords(lead.keywords).slice(0, 5).map(keyword => <span key={keyword}>#{keyword}</span>)}</div>
             </div>
-            <div className={styles.leadScore}><DemandBadge lead={lead}/><small>{lead.demand_reason || "已完成需求判斷"}</small></div>
+            <div className={styles.leadScore}>
+              <div className={styles.scoreBadges}><DemandBadge lead={lead}/><AiMatchBadge lead={lead}/></div>
+              {lead.classification_source === "openai" && <small className={styles.relevanceReason}>{lead.relevance_reason || "AI 已確認內容符合篩選需求"}</small>}
+              <small>{lead.demand_reason || "已完成需求判斷"}</small>
+            </div>
             <div className={styles.leadActions}>
               <button type="button" className={styles.copyButton} onClick={() => openCopy(lead)} disabled={Boolean(busyAction)}><Icon name="sparkles" size={17}/>文案</button>
               {lead.permalink && <a href={lead.permalink} target="_blank" rel="noreferrer" aria-label="在 Threads 查看" title="在 Threads 查看"><Icon name="external" size={18}/></a>}
@@ -525,8 +645,23 @@ export default function Dashboard() {
             <small className={styles.fieldNote}>{(settings.keywords || []).length} / 30 組關鍵字</small>
           </section>
 
+          <section className={`${styles.settingsCard} ${styles.semanticSettingsCard}`}>
+            <div className={styles.settingHead}><span>02</span><div><h2>AI 語意篩選</h2><p>讓關鍵字只負責找候選，再由 AI 讀懂全文、語境與真實需求。</p></div></div>
+            <div className={styles.filterLogic}>
+              <span><Icon name="search" size={17}/><b>關鍵字找候選</b></span><i>→</i><span><Icon name="sparkles" size={17}/><b>AI 判斷語意</b></span><i>→</i><span><Icon name="check" size={17}/><b>只顯示符合內容</b></span>
+            </div>
+            <label className={styles.switchRow}><span><strong>啟用 AI 語意篩選</strong><small>建議保持開啟。AI 失敗或無法確定時，該候選內容不會被放行。</small></span><input type="checkbox" checked={Boolean(settings.ai_filter_enabled)} onChange={event => setSettings(current => ({ ...current, ai_filter_enabled: event.target.checked }))}/><i/></label>
+            <label className={styles.fullField}><span>你真正想找的內容</span><textarea value={settings.filter_requirements || ""} onChange={event => setSettings(current => ({ ...current, filter_requirements: event.target.value }))} maxLength={2000} placeholder="描述應保留與排除的主題、情境和需求…"/><small>{(settings.filter_requirements || "").length} / 2000 字</small></label>
+            <label className={styles.thresholdField}>
+              <span><strong>最低符合信心</strong><small>越高越嚴格；建議 75%。</small></span>
+              <input type="range" min="50" max="95" step="1" value={Math.min(95, Math.max(50, Number(settings.ai_confidence_threshold) || 75))} onChange={event => setSettings(current => ({ ...current, ai_confidence_threshold: Number(event.target.value) }))}/>
+              <output>{Math.min(95, Math.max(50, Number(settings.ai_confidence_threshold) || 75))}%</output>
+            </label>
+            <p className={styles.safetyNote}><Icon name="check" size={16}/><span><strong>嚴格放行</strong>：同樣出現「過敏」兩字，戰爭、政治、比喻或其他無關語境會直接排除。只有符合你的描述且超過門檻的內容才進入商機池。</span></p>
+          </section>
+
           <section className={styles.settingsCard}>
-            <div className={styles.settingHead}><span>02</span><div><h2>每日蒐集</h2><p>以台北時間執行；達不到目標時顯示差額，不會用重複資料補足。</p></div></div>
+            <div className={styles.settingHead}><span>03</span><div><h2>每日蒐集</h2><p>以台北時間執行；達不到目標時顯示差額，不會用重複資料補足。</p></div></div>
             <div className={styles.twoFields}>
               <label><span>每日目標筆數</span><input type="number" min="1" max="1000" value={settings.target_per_day} onChange={event => setSettings(current => ({ ...current, target_per_day: Number(event.target.value) }))}/></label>
               <label><span>預定執行時段</span><input value="08:30–09:29" disabled/><small>Vercel 免費方案會在這一小時內觸發。</small></label>
@@ -535,14 +670,14 @@ export default function Dashboard() {
           </section>
 
           <section className={styles.settingsCard}>
-            <div className={styles.settingHead}><span>03</span><div><h2>文案偏好</h2><p>文案會依每篇內容、需求強度與下列語氣個別產生。</p></div></div>
+            <div className={styles.settingHead}><span>04</span><div><h2>文案偏好</h2><p>文案會依每篇內容、需求強度與下列語氣個別產生。</p></div></div>
             <label className={styles.fullField}><span>回覆語氣</span><input list="tone-options" value={settings.tone || ""} onChange={event => setSettings(current => ({ ...current, tone: event.target.value }))}/><datalist id="tone-options"><option value="專業親切"/><option value="簡潔直接"/><option value="溫暖自然"/><option value="顧問式"/></datalist></label>
             <label className={styles.fullField}><span>你的服務主張</span><textarea value={settings.offer || ""} onChange={event => setSettings(current => ({ ...current, offer: event.target.value }))} maxLength={300}/><small>{(settings.offer || "").length} / 300 字</small></label>
           </section>
 
           <section className={styles.integrationGrid}>
             <article><span className={styles.integrationIcon}>@</span><div><small>THREADS</small><strong>已連線 @{data.account?.username || "threads_user"}</strong><p>已核准關鍵字搜尋與近 7 日公開內容蒐集。</p></div><i className={styles.okStatus}><Icon name="check" size={14}/>正常</i></article>
-            <article><span className={`${styles.integrationIcon} ${styles.aiIcon}`}><Icon name="sparkles"/></span><div><small>智慧文案</small><strong>{leads.some(lead => lead.copy_source === "openai") ? "OpenAI 文案已啟用" : "內容感知文案已啟用"}</strong><p>即使未設定 OpenAI，也會根據貼文產生可編輯文案。</p></div><i className={styles.okStatus}><Icon name="check" size={14}/>可用</i></article>
+            <article><span className={`${styles.integrationIcon} ${styles.aiIcon}`}><Icon name="sparkles"/></span><div><small>OPENAI</small><strong>{settings.ai_filter_enabled ? "AI 語意篩選已啟用" : "AI 語意篩選已暫停"}</strong><p>{settings.ai_filter_enabled ? `只顯示符合度達 ${Number(settings.ai_confidence_threshold) || 75}% 的內容；判定失敗不放行。` : "目前關鍵字候選不經 AI 語意判斷。"}</p></div><i className={settings.ai_filter_enabled ? styles.okStatus : styles.pausedStatus}><Icon name={settings.ai_filter_enabled ? "check" : "close"} size={14}/>{settings.ai_filter_enabled ? "嚴格篩選" : "已暫停"}</i></article>
           </section>
 
           <div className={styles.saveBar}><p>所有資料只供此擁有者帳號查看。</p><button type="submit" disabled={Boolean(busyAction)}>{busyAction === "save" ? "儲存中…" : "儲存設定"}</button></div>
