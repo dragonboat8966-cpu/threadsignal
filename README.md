@@ -28,10 +28,13 @@
 - `TOKEN_ENCRYPTION_KEY`
 - `CRON_SECRET`
 - `OWNER_THREADS_USER_ID`（建議）或第一次綁定用的 `OWNER_THREADS_USERNAME`
-- `OPENAI_API_KEY`（必要；必須屬於已啟用 API 計費或仍有可用額度的 OpenAI 專案）
+- `AI_FILTER_PROVIDER`（`openai` 或 `local_codex`）
+- `LOCAL_ANALYZER_SECRET`（`local_codex` 可選；空白時沿用既有 `SESSION_SECRET` 作為 HMAC 密鑰）
+- `THREADSIGNAL_SITE_URL`（本機分析器使用，正式值為 `https://threadsignal-m2w6.vercel.app`）
+- `OPENAI_API_KEY`（只有網站端即時 OpenAI 模式與 AI 文案功能需要）
 - `OPENAI_MODEL`（預設 `gpt-5-mini`）
 
-部署後需以擁有者 Threads 帳號重新 OAuth 一次，讓長效權杖安全寫入 Neon，之後從 `/dashboard` 設定關鍵字、AI 篩選條件與最低信心分數，再手動測試一次。若 OpenAI 金鑰無效、API 額度不足或判定失敗，系統會保留候選內容供後續重試，但不會將它們顯示為合格名單。
+部署後需以擁有者 Threads 帳號重新 OAuth 一次，讓長效權杖安全寫入 Neon，之後從 `/dashboard` 設定關鍵字、AI 篩選條件與最低信心分數，再手動測試一次。`local_codex` 模式會將候選內容留在待判定區，由本機排程下載、分析並以 HTTPS＋HMAC 驗證回傳；本機離線或判定失敗時不會將候選內容顯示為合格名單。
 
 ## 立即啟動
 
@@ -49,7 +52,7 @@ node server.js
 1. 在 Meta for Developers 建立含 Threads use case 的 App。
 2. 完成 OAuth，取得含 `threads_keyword_search` 權限的長期存取權杖。
 3. 把權杖填入 `.env` 的 `THREADS_ACCESS_TOKEN`。
-4. 填入具有效 API 額度的 `OPENAI_API_KEY`，供語意相關性與需求判定使用。
+4. 選擇網站端 `OPENAI_API_KEY`，或依 `docs/local-codex-analyzer.md` 啟用本機 Codex 排程分析。
 5. 重新啟動服務。
 
 程式使用 Meta 官方 `GET https://graph.threads.net/keyword_search`，逐關鍵字查詢 `RECENT`、自動翻頁，並只收錄最近 7 天的候選內容。系統以貼文 ID 及帳號＋內容指紋跨關鍵字、跨頁與跨日去重，再把必要的公開文字送至 OpenAI API 做語意相關性與需求判定。只有通過自訂條件與最低信心門檻的內容才會顯示；同字異義、比喻、無實際需求或無關主題會被排除。實際每日可取得筆數仍取決於關鍵字當日貼文量、Meta API 配額、OpenAI API 額度與授權狀態；「200 筆」是每日目標，不會以複製或偽造資料補足。

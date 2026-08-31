@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db, ensureSchema } from "../../../../lib/db";
 import { generateCopyBatch } from "../../../../lib/ai-copy";
 import { screenPendingLeads } from "../../../../lib/screener";
+import { usesLocalCodex } from "../../../../lib/ai-provider";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -10,6 +11,9 @@ export async function GET(request) {
   const expected = process.env.CRON_SECRET;
   if (!expected || request.headers.get("authorization") !== `Bearer ${expected}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (usesLocalCodex()) {
+    return NextResponse.json({ ok: true, skipped: true, reason: "已改由本機 Codex 排程執行語意判定；Vercel 不會呼叫 OpenAI API。" });
   }
   if (!process.env.OPENAI_API_KEY) {
     return NextResponse.json({ ok: true, skipped: true, reason: "OPENAI_API_KEY 尚未設定；待判定候選內容維持隱藏，不會以關鍵字結果放行。" });
@@ -42,7 +46,7 @@ export async function GET(request) {
           AND published_at >= NOW() - INTERVAL '7 days'
           AND copy_source='rules'
           AND (${account.ai_filter_enabled}=FALSE OR (
-            classification_source='openai' AND ai_match=TRUE
+            classification_source IN ('openai','local_codex') AND ai_match=TRUE
             AND ai_confidence >= ${Number(account.ai_confidence_threshold) || 75}
           ))
         ORDER BY demand_score DESC, collected_at ASC

@@ -4,6 +4,7 @@ import { decryptSession, THREADS_SESSION_COOKIE } from "../../../../lib/threads-
 import { accountWithToken } from "../../../../lib/accounts";
 import { classifyRelevanceBatch, RELEVANCE_BATCH_LIMIT } from "../../../../lib/ai-relevance";
 import { db, ensureSchema } from "../../../../lib/db";
+import { usesLocalCodex } from "../../../../lib/ai-provider";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -70,6 +71,12 @@ export async function GET(request) {
   if (!settings?.ai_filter_enabled) {
     return NextResponse.json({
       error: "請先到商機工作台啟用 AI 語意篩選，再執行搜尋。",
+      results: []
+    }, { status: 409 });
+  }
+  if (usesLocalCodex()) {
+    return NextResponse.json({
+      error: "目前使用本機 Codex 排程分析。請到商機工作台按「立即蒐集」；候選內容完成本機判定後才會顯示。",
       results: []
     }, { status: 409 });
   }

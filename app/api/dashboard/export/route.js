@@ -19,7 +19,7 @@ export async function GET() {
     SELECT * FROM leads
     WHERE threads_user_id=${owner.userId}
       AND published_at >= NOW() - INTERVAL '7 days'
-      AND (${aiFilterEnabled}=FALSE OR (classification_source='openai' AND ai_match=TRUE AND ai_confidence >= ${threshold}))
+      AND (${aiFilterEnabled}=FALSE OR (classification_source IN ('openai','local_codex') AND ai_match=TRUE AND ai_confidence >= ${threshold}))
     ORDER BY published_at DESC LIMIT 5000`;
   const header = ["內容類型","AI符合度","AI符合原因","需求度","分數","關鍵字","帳號","內容","建議文案","狀態","時間","連結","母貼文ID","判定來源"];
   const csv = "\ufeff" + [header, ...rows.map(row => [row.content_type,row.ai_confidence ?? "",row.relevance_reason,row.demand_level,row.demand_score,(row.keywords || []).join("、"),row.username,row.body,row.suggested_copy,row.status,row.published_at,row.permalink,row.parent_threads_id,row.classification_source])].map(line => line.map(safeCell).join(",")).join("\r\n");
