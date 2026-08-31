@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authorizeLocalUpload } from "../../../../lib/local-analyzer-auth";
 import { localAnalyzerOwner } from "../../../../lib/local-analyzer-owner";
+import { collectionWindowDays } from "../../../../lib/collection-window";
 import { db, ensureSchema } from "../../../../lib/db";
 import { isRelevanceAccepted, validateRelevanceBatchOutput } from "../../../../lib/ai-relevance";
 import { LOCAL_CODEX_PROVIDER, usesLocalCodex } from "../../../../lib/ai-provider";
@@ -31,18 +32,21 @@ export async function POST(request) {
   const sql = db();
   const userId = await localAnalyzerOwner();
   if (!userId) return NextResponse.json({ error: "找不到已啟用的擁有者帳號。" }, { status: 404 });
+  const settingRows = await sql`
+    SELECT ai_confidence_threshold, collection_days FROM collector_settings
+    WHERE threads_user_id=${userId} LIMIT 1`;
+  const threshold = Number(settingRows[0]?.ai_confidence_threshold) || 75;
+  const collectionDays = collectionWindowDays(settingRows[0]?.collection_days);
   const ids = body.items.map(item => String(item?.id || ""));
   const pending = await sql`
     SELECT id::text id FROM leads
-    WHERE threads_user_id=${userId} AND classification_source='pending' AND id::text = ANY(${ids}::text[])`;
+    WHERE threads_user_id=${userId} AND classification_source='pending' AND id::text = ANY(${ids}::text[])
+      AND published_at >= NOW() - (${collectionDays} * INTERVAL '1 day')`;
   const expectedIds = pending.map(row => row.id);
   if (expectedIds.length !== ids.length) {
     return NextResponse.json({ error: "部分資料已處理、已過期或不屬於此帳號；請重新下載待判定資料。" }, { status: 409 });
   }
 
-  const settingRows = await sql`
-    SELECT ai_confidence_threshold FROM collector_settings WHERE threads_user_id=${userId} LIMIT 1`;
-  const threshold = Number(settingRows[0]?.ai_confidence_threshold) || 75;
   let results;
   try { results = validateRelevanceBatchOutput({ items: body.items }, expectedIds); }
   catch (error) { return NextResponse.json({ error: String(error.message || error).slice(0, 500) }, { status: 400 }); }
@@ -73,7 +77,8 @@ export async function POST(request) {
 
   const pendingRows = await sql`
     SELECT COUNT(*)::int count FROM leads
-    WHERE threads_user_id=${userId} AND classification_source='pending' AND published_at >= NOW() - INTERVAL '7 days'`;
+    WHERE threads_user_id=${userId} AND classification_source='pending'
+      AND published_at >= NOW() - (${collectionDays} * INTERVAL '1 day')`;
   return NextResponse.json({
     ok: true,
     processedCount: updates.length,

@@ -8,6 +8,7 @@ const defaultFilterRequirements = "只保留與居家空氣品質、過敏症狀
 const defaults = {
   keywords: [],
   target_per_day: 200,
+  collection_days: 7,
   schedule: "08:30",
   tone: "專業親切",
   offer: "提供快速回覆與一對一需求評估",
@@ -472,7 +473,7 @@ export default function Dashboard() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "刪除失敗");
       setPendingDelete(null);
-      notify(isAll ? `已清除 ${result.deleted || 0} 筆搜尋資料。` : "此筆資料已刪除，近 7 天內不會再收錄。");
+      notify(isAll ? `已清除 ${result.deleted || 0} 筆搜尋資料。` : `此筆資料已刪除，近 ${collectionDays} 天內不會再收錄。`);
       await load({ quiet: true });
     } catch (error) {
       notify(error.message, "error");
@@ -509,6 +510,7 @@ export default function Dashboard() {
   const copyReady = Number(stats.ready) || 0;
   const pendingAiCount = Number(stats.pending) || 0;
   const rejectedAiCount = Number(stats.rejected) || 0;
+  const collectionDays = Math.min(30, Math.max(1, Number(settings.collection_days) || 7));
   const modalOpen = Boolean(activeLead || pendingDelete);
 
   return <div className={styles.dashboardRoot} data-dashboard-root>
@@ -562,7 +564,7 @@ export default function Dashboard() {
         </section>
 
         <section className={styles.statsGrid} aria-label="商機統計">
-          <article className={styles.statCard}><span className={styles.statMint}><Icon name="leads"/></span><div><b>{stats.total || 0}</b><small>資料庫貼文</small></div><em>近 7 天且不重複</em></article>
+          <article className={styles.statCard}><span className={styles.statMint}><Icon name="leads"/></span><div><b>{stats.total || 0}</b><small>資料庫貼文</small></div><em>近 {collectionDays} 天且不重複</em></article>
           <article className={styles.statCard}><span className={styles.statCoral}><Icon name="sparkles"/></span><div><b>{stats.high || 0}</b><small>高需求商機</small></div><em>優先聯繫名單</em></article>
           <article className={styles.statCard}><span className={styles.statPurple}><Icon name="check"/></span><div><b>{copyReady}</b><small>文案已就緒</small></div><em>可直接調整與複製</em></article>
           <article className={styles.statCard}><span className={styles.statAmber}><Icon name="reply"/></span><div><b>{stats.replies || 0}</b><small>留言訊號</small></div><em>貼文與留言一起整理</em></article>
@@ -597,7 +599,7 @@ export default function Dashboard() {
 
       {view === "leads" && <div className={styles.view}>
         <section className={styles.leadsIntro}>
-          <div><h2>近 7 天公開商機</h2><p>貼文與留言一起整理，超過 7 天自動排除，同一內容不重複收錄。</p></div>
+          <div><h2>近 {collectionDays} 天公開商機</h2><p>貼文與留言一起整理，超過 {collectionDays} 天自動排除，同一內容不重複收錄。</p></div>
           <div className={styles.leadTopActions}>
             <button type="button" className={styles.ghostDanger} onClick={() => setPendingDelete("all")} disabled={!leads.length || Boolean(busyAction)}><Icon name="trash" size={17}/>清除全部</button>
             <a className={styles.exportButton} href="/api/dashboard/export"><Icon name="download" size={17}/>匯出 CSV</a>
@@ -671,8 +673,9 @@ export default function Dashboard() {
           <section className={styles.settingsCard}>
             <div className={styles.settingHead}><span>03</span><div><h2>每日蒐集</h2><p>以台北時間執行；達不到目標時顯示差額，不會用重複資料補足。</p></div></div>
             <div className={styles.twoFields}>
+              <label><span>蒐集最近幾天</span><input type="number" min="1" max="30" value={settings.collection_days} onChange={event => setSettings(current => ({ ...current, collection_days: Number(event.target.value) }))}/><small>可設定 1–30 天，預設 7 天。</small></label>
               <label><span>每日目標筆數</span><input type="number" min="1" max="1000" value={settings.target_per_day} onChange={event => setSettings(current => ({ ...current, target_per_day: Number(event.target.value) }))}/></label>
-              <label><span>預定執行時段</span><input value="08:30–09:29" disabled/><small>Vercel 免費方案會在這一小時內觸發。</small></label>
+              <label className={styles.wideField}><span>預定執行時段</span><input value="08:30–09:29" disabled/><small>Vercel 免費方案會在這一小時內觸發。</small></label>
             </div>
             <label className={styles.switchRow}><span><strong>啟用每日自動蒐集</strong><small>關閉後仍可使用上方的「立即蒐集」。</small></span><input type="checkbox" checked={Boolean(settings.active)} onChange={event => setSettings(current => ({ ...current, active: event.target.checked }))}/><i/></label>
           </section>
@@ -684,7 +687,7 @@ export default function Dashboard() {
           </section>
 
           <section className={styles.integrationGrid}>
-            <article><span className={styles.integrationIcon}>@</span><div><small>THREADS</small><strong>已連線 @{data.account?.username || "threads_user"}</strong><p>已核准關鍵字搜尋與近 7 日公開內容蒐集。</p></div><i className={styles.okStatus}><Icon name="check" size={14}/>正常</i></article>
+            <article><span className={styles.integrationIcon}>@</span><div><small>THREADS</small><strong>已連線 @{data.account?.username || "threads_user"}</strong><p>已核准關鍵字搜尋與近 {collectionDays} 日公開內容蒐集。</p></div><i className={styles.okStatus}><Icon name="check" size={14}/>正常</i></article>
             <article><span className={`${styles.integrationIcon} ${styles.aiIcon}`}><Icon name="sparkles"/></span><div><small>{localCodex ? "CODEX 本機" : "OPENAI"}</small><strong>{settings.ai_filter_enabled ? "AI 語意篩選已啟用" : "AI 語意篩選已暫停"}</strong><p>{settings.ai_filter_enabled ? localCodex ? `本機排程分析，只顯示符合度達 ${Number(settings.ai_confidence_threshold) || 75}% 的內容。` : `只顯示符合度達 ${Number(settings.ai_confidence_threshold) || 75}% 的內容；判定失敗不放行。` : "目前關鍵字候選不經 AI 語意判斷。"}</p></div><i className={settings.ai_filter_enabled ? styles.okStatus : styles.pausedStatus}><Icon name={settings.ai_filter_enabled ? "check" : "close"} size={14}/>{settings.ai_filter_enabled ? localCodex ? "本機排程" : "嚴格篩選" : "已暫停"}</i></article>
           </section>
 
@@ -706,7 +709,7 @@ export default function Dashboard() {
       <section className={styles.deleteModal} role="alertdialog" aria-modal="true" aria-labelledby="delete-dialog-title" aria-describedby="delete-dialog-description" onKeyDown={trapFocus}>
         <span className={styles.deleteIcon}><Icon name="trash" size={23}/></span>
         <h2 id="delete-dialog-title">{pendingDelete === "all" ? "清除全部搜尋資料？" : "刪除這筆搜尋資料？"}</h2>
-        <p id="delete-dialog-description">{pendingDelete === "all" ? "這會刪除目前商機池的所有資料，但會保留關鍵字與蒐集設定。" : "刪除後，這筆內容在近 7 天內不會被重新收錄。"}</p>
+        <p id="delete-dialog-description">{pendingDelete === "all" ? "這會刪除目前商機池的所有資料，但會保留關鍵字與蒐集設定。" : `刪除後，這筆內容在近 ${collectionDays} 天內不會被重新收錄。`}</p>
         <div><button ref={deleteCancelRef} type="button" className={styles.secondaryButton} onClick={() => setPendingDelete(null)}>取消</button><button type="button" className={styles.confirmDeleteButton} onClick={confirmDelete} disabled={Boolean(busyAction)}>{busyAction === "delete" ? "刪除中…" : "確認刪除"}</button></div>
       </section>
     </div>}

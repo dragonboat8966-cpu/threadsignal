@@ -33,7 +33,7 @@ export default function ReviewDemo() {
       setResults(data.results || []);
       const diagnostics = data.diagnostics || {};
       const rawCount = (diagnostics.recentRawCount || 0) + (diagnostics.topRawCount || 0);
-      setStatus(`AI 分析完成：Meta 原始回傳 ${rawCount} 筆，近 7 日候選 ${diagnostics.candidateCount || 0} 筆；符合條件 ${diagnostics.acceptedCount || 0} 筆，排除 ${diagnostics.rejectedCount || 0} 筆。只有符合度達 ${diagnostics.confidenceThreshold || 75}% 的內容會顯示。`);
+      setStatus(`AI 分析完成：Meta 原始回傳 ${rawCount} 筆，近 ${diagnostics.collectionDays || 7} 日候選 ${diagnostics.candidateCount || 0} 筆；符合條件 ${diagnostics.acceptedCount || 0} 筆，排除 ${diagnostics.rejectedCount || 0} 筆。只有符合度達 ${diagnostics.confidenceThreshold || 75}% 的內容會顯示。`);
     } catch (error) {
       setStatus(error.message);
     } finally {

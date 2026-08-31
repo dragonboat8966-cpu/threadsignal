@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOwner } from "../../../../lib/cloud-auth";
+import { collectionWindowDays } from "../../../../lib/collection-window";
 import { db, ensureSchema } from "../../../../lib/db";
 
 export const runtime = "nodejs";
@@ -11,6 +12,7 @@ export async function PUT(request) {
   const keywords = Array.isArray(input.keywords) ? [...new Set(input.keywords.map(String).map(value => value.trim()).filter(Boolean))].slice(0, 30) : [];
   if (!keywords.length) return NextResponse.json({ error: "至少需要一個關鍵字" }, { status: 400 });
   const target = Math.max(1, Math.min(1000, Number(input.target) || 200));
+  const collectionDays = collectionWindowDays(input.collection_days);
   const schedule = /^([01]\d|2[0-3]):[0-5]\d$/.test(input.schedule) ? input.schedule : "08:30";
   const tone = String(input.tone || "專業親切").slice(0, 50);
   const offer = String(input.offer || "提供快速回覆與一對一需求評估").slice(0, 300);
@@ -22,10 +24,10 @@ export async function PUT(request) {
   const aiConfidenceThreshold = Math.max(50, Math.min(95, Number(input.ai_confidence_threshold) || 75));
   await ensureSchema();
   const sql = db();
-  const previousRows = await sql`SELECT ai_filter_enabled, filter_requirements, ai_confidence_threshold FROM collector_settings WHERE threads_user_id=${owner.userId} LIMIT 1`;
+  const previousRows = await sql`SELECT ai_filter_enabled, filter_requirements, ai_confidence_threshold, collection_days FROM collector_settings WHERE threads_user_id=${owner.userId} LIMIT 1`;
   const previous = previousRows[0];
   const rows = await sql`
-    UPDATE collector_settings SET keywords=${JSON.stringify(keywords)}::jsonb, target_per_day=${target},
+    UPDATE collector_settings SET keywords=${JSON.stringify(keywords)}::jsonb, target_per_day=${target}, collection_days=${collectionDays},
       schedule=${schedule}, tone=${tone}, offer=${offer}, active=${Boolean(input.active)},
       ai_filter_enabled=${aiFilterEnabled}, filter_requirements=${filterRequirements},
       ai_confidence_threshold=${aiConfidenceThreshold}, updated_at=NOW()
@@ -36,13 +38,18 @@ export async function PUT(request) {
     Number(previous?.ai_confidence_threshold) !== aiConfidenceThreshold
   );
   let requeued = 0;
+  const removedRows = await sql`
+    DELETE FROM leads
+    WHERE threads_user_id=${owner.userId}
+      AND published_at < NOW() - (${collectionDays} * INTERVAL '1 day')
+    RETURNING id`;
   if (filterChanged) {
     const requeuedRows = await sql`
       UPDATE leads SET ai_match=NULL, ai_confidence=NULL, relevance_reason='等待新的 AI 語意判定',
         classification_source='pending', classified_at=NULL
-      WHERE threads_user_id=${owner.userId} AND published_at >= NOW() - INTERVAL '7 days'
+      WHERE threads_user_id=${owner.userId} AND published_at >= NOW() - (${collectionDays} * INTERVAL '1 day')
       RETURNING id`;
     requeued = requeuedRows.length;
   }
-  return NextResponse.json({ settings: rows[0], requeued, filterChanged });
+  return NextResponse.json({ settings: rows[0], requeued, removedOutsideWindow: removedRows.length, filterChanged });
 }

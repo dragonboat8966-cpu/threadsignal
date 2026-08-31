@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authorizeLocalDownload } from "../../../../lib/local-analyzer-auth";
 import { localAnalyzerOwner } from "../../../../lib/local-analyzer-owner";
+import { collectionWindowDays } from "../../../../lib/collection-window";
 import { db, ensureSchema } from "../../../../lib/db";
 import { usesLocalCodex } from "../../../../lib/ai-provider";
 
@@ -21,9 +22,10 @@ export async function GET(request) {
   if (!userId) return NextResponse.json({ error: "找不到已啟用的擁有者帳號。" }, { status: 404 });
 
   const settingRows = await sql`
-    SELECT ai_filter_enabled, filter_requirements, ai_confidence_threshold
+    SELECT ai_filter_enabled, filter_requirements, ai_confidence_threshold, collection_days
     FROM collector_settings WHERE threads_user_id=${userId} LIMIT 1`;
   const settings = settingRows[0];
+  const collectionDays = collectionWindowDays(settings?.collection_days);
   if (!settings?.ai_filter_enabled) {
     return NextResponse.json({ version: 1, generatedAt: new Date().toISOString(), items: [], disabled: true });
   }
@@ -33,7 +35,7 @@ export async function GET(request) {
     FROM leads
     WHERE threads_user_id=${userId}
       AND classification_source='pending'
-      AND published_at >= NOW() - INTERVAL '7 days'
+      AND published_at >= NOW() - (${collectionDays} * INTERVAL '1 day')
     ORDER BY demand_score DESC, published_at DESC
     LIMIT 60`;
 
@@ -42,6 +44,7 @@ export async function GET(request) {
     generatedAt: new Date().toISOString(),
     filterRequirements: settings.filter_requirements,
     confidenceThreshold: Number(settings.ai_confidence_threshold) || 75,
+    collectionDays,
     items: rows.map(row => ({
       id: String(row.id),
       body: String(row.body || "").slice(0, 4000),

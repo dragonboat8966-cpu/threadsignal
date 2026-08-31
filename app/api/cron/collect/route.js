@@ -12,7 +12,10 @@ export async function GET(request) {
   }
   await ensureSchema();
   const sql = db();
-  await sql`DELETE FROM leads WHERE published_at < NOW() - INTERVAL '7 days'`;
+  await sql`
+    DELETE FROM leads AS l USING collector_settings AS s
+    WHERE l.threads_user_id=s.threads_user_id
+      AND l.published_at < NOW() - (s.collection_days * INTERVAL '1 day')`;
   await sql`DELETE FROM dismissed_items WHERE expires_at < NOW()`;
   const accounts = await sql`
     SELECT a.threads_user_id FROM threads_accounts a

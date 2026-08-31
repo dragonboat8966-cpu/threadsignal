@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { decryptSession, THREADS_SESSION_COOKIE } from "../../../../lib/threads-session";
 import { accountWithToken } from "../../../../lib/accounts";
 import { classifyRelevanceBatch, RELEVANCE_BATCH_LIMIT } from "../../../../lib/ai-relevance";
+import { collectionCutoffTimestamp, collectionWindowDays } from "../../../../lib/collection-window";
 import { db, ensureSchema } from "../../../../lib/db";
 import { usesLocalCodex } from "../../../../lib/ai-provider";
 
@@ -25,11 +26,13 @@ function publicAIError(error) {
   return "AI 語意分析未完成，為避免顯示不相關內容，本次搜尋結果未顯示。";
 }
 
-async function searchThreads(query, searchType, accessToken) {
+async function searchThreads(query, searchType, accessToken, { since, until }) {
   const url = new URL("https://graph.threads.net/keyword_search");
   url.search = new URLSearchParams({
     q: query,
     search_type: searchType,
+    since: String(Math.floor(since / 1000)),
+    until: String(Math.floor(until / 1000)),
     limit: "25",
     fields: "id,username,text,timestamp,permalink,is_reply",
     access_token: accessToken
@@ -65,9 +68,12 @@ export async function GET(request) {
   await ensureSchema();
   const sql = db();
   const settingRows = await sql`
-    SELECT ai_filter_enabled, filter_requirements, ai_confidence_threshold
+    SELECT ai_filter_enabled, filter_requirements, ai_confidence_threshold, collection_days
     FROM collector_settings WHERE threads_user_id=${session.userId} LIMIT 1`;
   const settings = settingRows[0];
+  const collectionDays = collectionWindowDays(settings?.collection_days);
+  const searchNow = Date.now();
+  const cutoff = collectionCutoffTimestamp(collectionDays, searchNow);
   if (!settings?.ai_filter_enabled) {
     return NextResponse.json({
       error: "請先到商機工作台啟用 AI 語意篩選，再執行搜尋。",
@@ -90,9 +96,9 @@ export async function GET(request) {
   let recentItems;
   let topItems = [];
   try {
-    recentItems = await searchThreads(query, "RECENT", accessToken);
+    recentItems = await searchThreads(query, "RECENT", accessToken, { since: cutoff, until: searchNow });
     if (recentItems.length === 0) {
-      topItems = await searchThreads(query, "TOP", accessToken);
+      topItems = await searchThreads(query, "TOP", accessToken, { since: cutoff, until: searchNow });
     }
   } catch (error) {
     return NextResponse.json({
@@ -101,11 +107,10 @@ export async function GET(request) {
     }, { status: error.status || 502 });
   }
 
-  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const seen = new Set();
   const sourceItems = recentItems.length > 0 ? recentItems : topItems;
   let missingTimestamp = 0;
-  let olderThanSevenDays = 0;
+  let outsideCollectionWindow = 0;
   const candidates = sourceItems.filter(item => {
     if (!item.id || seen.has(item.id)) return false;
     seen.add(item.id);
@@ -115,7 +120,7 @@ export async function GET(request) {
       return false;
     }
     if (timestamp < cutoff) {
-      olderThanSevenDays += 1;
+      outsideCollectionWindow += 1;
       return false;
     }
     return true;
@@ -155,7 +160,8 @@ export async function GET(request) {
         acceptedCount: 0,
         rejectedCount: 0,
         missingTimestamp,
-        olderThanSevenDays,
+        outsideCollectionWindow,
+        collectionDays,
         aiStatus: "failed"
       }
     }, { status: 503, headers: { "Cache-Control": "no-store" } });
@@ -185,7 +191,8 @@ export async function GET(request) {
       acceptedCount: results.length,
       rejectedCount: Math.max(0, candidates.length - results.length),
       missingTimestamp,
-      olderThanSevenDays,
+      outsideCollectionWindow,
+      collectionDays,
       aiStatus: "complete",
       confidenceThreshold: Number(settings.ai_confidence_threshold) || 75
     }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOwner } from "../../../../../lib/cloud-auth";
+import { collectionWindowDays } from "../../../../../lib/collection-window";
 import { db, ensureSchema } from "../../../../../lib/db";
 import { dismissalFingerprint } from "../../../../../lib/collector";
 
@@ -11,10 +12,12 @@ export async function DELETE(_request, { params }) {
   const { id } = await params;
   await ensureSchema();
   const sql = db();
+  const settingRows = await sql`SELECT collection_days FROM collector_settings WHERE threads_user_id=${owner.userId} LIMIT 1`;
+  const collectionDays = collectionWindowDays(settingRows[0]?.collection_days);
   const rows = await sql`SELECT threads_id FROM leads WHERE id=${Number(id)} AND threads_user_id=${owner.userId} LIMIT 1`;
   if (!rows.length) return NextResponse.json({ error: "找不到資料" }, { status: 404 });
   const fingerprint = dismissalFingerprint(owner.userId, rows[0].threads_id);
-  await sql`INSERT INTO dismissed_items (threads_user_id, fingerprint, expires_at) VALUES (${owner.userId}, ${fingerprint}, NOW() + INTERVAL '7 days') ON CONFLICT (threads_user_id, fingerprint) DO UPDATE SET expires_at=EXCLUDED.expires_at`;
+  await sql`INSERT INTO dismissed_items (threads_user_id, fingerprint, expires_at) VALUES (${owner.userId}, ${fingerprint}, NOW() + (${collectionDays} * INTERVAL '1 day')) ON CONFLICT (threads_user_id, fingerprint) DO UPDATE SET expires_at=EXCLUDED.expires_at`;
   await sql`DELETE FROM leads WHERE id=${Number(id)} AND threads_user_id=${owner.userId}`;
   return NextResponse.json({ deleted: 1 });
 }
