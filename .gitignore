@@ -4,6 +4,7 @@ node_modules/
 .next/
 .vercel/
 .pnpm-store/
+.vercel-cli-config/
 *.log
 
 .vercel

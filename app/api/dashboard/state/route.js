@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireOwner } from "../../../../lib/cloud-auth";
 import { db, ensureSchema } from "../../../../lib/db";
+import { aiFilterProvider } from "../../../../lib/ai-provider";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,7 +28,7 @@ export async function GET(request) {
     FROM leads
     WHERE threads_user_id=${owner.userId}
       AND published_at >= NOW() - INTERVAL '7 days'
-      AND (${aiFilterEnabled}=FALSE OR (classification_source='openai' AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold}))
+      AND (${aiFilterEnabled}=FALSE OR (classification_source IN ('openai','local_codex') AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold}))
       AND (${level}='' OR demand_level=${level})
       AND (${type}='' OR content_type=${type})
       AND (${search}='' OR body ILIKE ${`%${search}%`} OR username ILIKE ${`%${search}%`} OR keywords::text ILIKE ${`%${search}%`})
@@ -37,7 +38,7 @@ export async function GET(request) {
     FROM leads
     WHERE threads_user_id=${owner.userId}
       AND published_at >= NOW() - INTERVAL '7 days'
-      AND (${aiFilterEnabled}=FALSE OR (classification_source='openai' AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold}))
+      AND (${aiFilterEnabled}=FALSE OR (classification_source IN ('openai','local_codex') AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold}))
       AND (${level}='' OR demand_level=${level})
       AND (${type}='' OR content_type=${type})
       AND (${search}='' OR body ILIKE ${`%${search}%`} OR username ILIKE ${`%${search}%`} OR keywords::text ILIKE ${`%${search}%`})`;
@@ -48,19 +49,19 @@ export async function GET(request) {
     FROM leads
     WHERE threads_user_id=${owner.userId}
       AND published_at >= NOW() - INTERVAL '7 days'
-      AND (${aiFilterEnabled}=FALSE OR (classification_source='openai' AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold}))
+      AND (${aiFilterEnabled}=FALSE OR (classification_source IN ('openai','local_codex') AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold}))
       AND demand_level='高需求'
     ORDER BY demand_score DESC, published_at DESC LIMIT 3`;
   const runs = await sql`SELECT * FROM collection_runs WHERE threads_user_id=${owner.userId} ORDER BY started_at DESC LIMIT 20`;
   const statRows = await sql`
     SELECT
-      COUNT(*) FILTER (WHERE ${aiFilterEnabled}=FALSE OR (classification_source='openai' AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold}))::int total,
-      COUNT(*) FILTER (WHERE (${aiFilterEnabled}=FALSE OR (classification_source='openai' AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold})) AND demand_level='高需求')::int high,
-      COUNT(*) FILTER (WHERE (${aiFilterEnabled}=FALSE OR (classification_source='openai' AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold})) AND content_type='留言')::int replies,
-      COUNT(*) FILTER (WHERE (${aiFilterEnabled}=FALSE OR (classification_source='openai' AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold})) AND suggested_copy IS NOT NULL AND suggested_copy <> '')::int ready,
-      COUNT(*) FILTER (WHERE (${aiFilterEnabled}=FALSE OR (classification_source='openai' AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold})) AND collected_at >= date_trunc('day', NOW() AT TIME ZONE 'Asia/Taipei') AT TIME ZONE 'Asia/Taipei')::int today,
+      COUNT(*) FILTER (WHERE ${aiFilterEnabled}=FALSE OR (classification_source IN ('openai','local_codex') AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold}))::int total,
+      COUNT(*) FILTER (WHERE (${aiFilterEnabled}=FALSE OR (classification_source IN ('openai','local_codex') AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold})) AND demand_level='高需求')::int high,
+      COUNT(*) FILTER (WHERE (${aiFilterEnabled}=FALSE OR (classification_source IN ('openai','local_codex') AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold})) AND content_type='留言')::int replies,
+      COUNT(*) FILTER (WHERE (${aiFilterEnabled}=FALSE OR (classification_source IN ('openai','local_codex') AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold})) AND suggested_copy IS NOT NULL AND suggested_copy <> '')::int ready,
+      COUNT(*) FILTER (WHERE (${aiFilterEnabled}=FALSE OR (classification_source IN ('openai','local_codex') AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold})) AND collected_at >= date_trunc('day', NOW() AT TIME ZONE 'Asia/Taipei') AT TIME ZONE 'Asia/Taipei')::int today,
       COUNT(*) FILTER (WHERE classification_source='pending')::int pending,
-      COUNT(*) FILTER (WHERE classification_source='openai' AND ai_match=FALSE)::int rejected
+      COUNT(*) FILTER (WHERE classification_source IN ('openai','local_codex') AND ai_match=FALSE)::int rejected
     FROM leads WHERE threads_user_id=${owner.userId} AND published_at >= NOW() - INTERVAL '7 days'`;
   return NextResponse.json({
     settings,
@@ -74,6 +75,7 @@ export async function GET(request) {
     account: owner.account,
     capabilities: {
       openaiConfigured: Boolean(process.env.OPENAI_API_KEY),
+      aiProvider: aiFilterProvider(),
       semanticFailClosed: true
     }
   }, { headers: { "Cache-Control": "no-store" } });

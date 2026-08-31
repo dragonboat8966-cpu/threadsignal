@@ -89,8 +89,12 @@ function DemandBadge({ lead }) {
 
 function AiMatchBadge({ lead }) {
   const confidence = Number(lead.ai_confidence);
-  if (lead.classification_source !== "openai" || !Number.isFinite(confidence)) return null;
+  if (!["openai", "local_codex"].includes(lead.classification_source) || !Number.isFinite(confidence)) return null;
   return <span className={styles.aiMatchBadge}><Icon name="sparkles" size={12}/>AI 符合 {Math.round(confidence)}%</span>;
+}
+
+function isAIClassified(lead) {
+  return ["openai", "local_codex"].includes(lead?.classification_source);
 }
 
 function filterSettingsChanged(previous = {}, next = {}) {
@@ -237,6 +241,7 @@ export default function Dashboard() {
 
   const leads = data?.leads || [];
   const stats = data?.stats || {};
+  const localCodex = data?.capabilities?.aiProvider === "local_codex";
   const matchedTotal = Number(data?.matchedTotal ?? leads.length);
   const priorityLeads = data?.priorityLeads || [];
 
@@ -320,6 +325,9 @@ export default function Dashboard() {
       if (!response.ok) throw new Error(result.error || "蒐集失敗");
       if (result.skipped) {
         notify(result.reason || "本次蒐集已略過。", "info");
+      } else if (settings.ai_filter_enabled && localCodex) {
+        const candidateCount = resultCount(result, "candidateCount", "insertedCount");
+        notify(`已加入 ${candidateCount} 筆候選內容，等待本機 Codex 排程分析；完成前不會顯示。`, "info");
       } else if (settings.ai_filter_enabled) {
         const candidateCount = resultCount(result, "candidateCount", "insertedCount");
         try {
@@ -562,9 +570,9 @@ export default function Dashboard() {
 
         {settings.ai_filter_enabled && <section className={styles.aiStatusStrip} aria-label="AI 語意篩選狀態">
           <span><Icon name="sparkles" size={17}/></span>
-          <div><strong>AI 語意篩選已啟用</strong><small>關鍵字只負責找候選；只有 AI 判定符合且信心達 {Number(settings.ai_confidence_threshold) || 75}% 的內容才會顯示。</small></div>
+          <div><strong>{localCodex ? "本機 Codex 語意篩選已啟用" : "AI 語意篩選已啟用"}</strong><small>關鍵字只負責找候選；只有 AI 判定符合且信心達 {Number(settings.ai_confidence_threshold) || 75}% 的內容才會顯示。{localCodex ? " 本機排程約每 15 分鐘處理一次。" : ""}</small></div>
           <dl><div><dt>待判定</dt><dd>{pendingAiCount}</dd></div><div><dt>已排除</dt><dd>{rejectedAiCount}</dd></div></dl>
-          <button type="button" className={styles.aiScreenButton} onClick={rescreenPending} disabled={!pendingAiCount || Boolean(busyAction)}><Icon name="refresh" size={15}/>{busyAction === "screen" ? "判定中…" : "重新篩選待判定"}</button>
+          <button type="button" className={styles.aiScreenButton} onClick={rescreenPending} disabled={localCodex || !pendingAiCount || Boolean(busyAction)}><Icon name="refresh" size={15}/>{localCodex ? "等待本機排程" : busyAction === "screen" ? "判定中…" : "重新篩選待判定"}</button>
         </section>}
 
         <section className={styles.prioritySection}>
@@ -578,7 +586,7 @@ export default function Dashboard() {
               <div className={styles.sourceLine}><span className={styles.sourceIcon}><Icon name={lead.content_type === "留言" ? "reply" : "post"} size={16}/></span><strong>@{lead.username || "threads_user"}</strong><time>{formatDate(lead.published_at, true)}</time></div>
               <p>{lead.body || "（沒有文字內容）"}</p>
               <div className={styles.keywordLine}>{normalizeKeywords(lead.keywords).slice(0, 3).map(keyword => <span key={keyword}>#{keyword}</span>)}</div>
-              {lead.classification_source === "openai" && <div className={styles.semanticEvidence}><AiMatchBadge lead={lead}/><small>{lead.relevance_reason || "AI 已確認內容符合篩選需求"}</small></div>}
+              {isAIClassified(lead) && <div className={styles.semanticEvidence}><AiMatchBadge lead={lead}/><small>{lead.relevance_reason || "AI 已確認內容符合篩選需求"}</small></div>}
               <footer><button type="button" onClick={() => openCopy(lead)}>查看建議文案</button>{lead.permalink && <a href={lead.permalink} target="_blank" rel="noreferrer" aria-label="在 Threads 查看"><Icon name="external" size={18}/></a>}</footer>
             </article>)}
           </div> : (
@@ -618,7 +626,7 @@ export default function Dashboard() {
             </div>
             <div className={styles.leadScore}>
               <div className={styles.scoreBadges}><DemandBadge lead={lead}/><AiMatchBadge lead={lead}/></div>
-              {lead.classification_source === "openai" && <small className={styles.relevanceReason}>{lead.relevance_reason || "AI 已確認內容符合篩選需求"}</small>}
+              {isAIClassified(lead) && <small className={styles.relevanceReason}>{lead.relevance_reason || "AI 已確認內容符合篩選需求"}</small>}
               <small>{lead.demand_reason || "已完成需求判斷"}</small>
             </div>
             <div className={styles.leadActions}>
@@ -677,7 +685,7 @@ export default function Dashboard() {
 
           <section className={styles.integrationGrid}>
             <article><span className={styles.integrationIcon}>@</span><div><small>THREADS</small><strong>已連線 @{data.account?.username || "threads_user"}</strong><p>已核准關鍵字搜尋與近 7 日公開內容蒐集。</p></div><i className={styles.okStatus}><Icon name="check" size={14}/>正常</i></article>
-            <article><span className={`${styles.integrationIcon} ${styles.aiIcon}`}><Icon name="sparkles"/></span><div><small>OPENAI</small><strong>{settings.ai_filter_enabled ? "AI 語意篩選已啟用" : "AI 語意篩選已暫停"}</strong><p>{settings.ai_filter_enabled ? `只顯示符合度達 ${Number(settings.ai_confidence_threshold) || 75}% 的內容；判定失敗不放行。` : "目前關鍵字候選不經 AI 語意判斷。"}</p></div><i className={settings.ai_filter_enabled ? styles.okStatus : styles.pausedStatus}><Icon name={settings.ai_filter_enabled ? "check" : "close"} size={14}/>{settings.ai_filter_enabled ? "嚴格篩選" : "已暫停"}</i></article>
+            <article><span className={`${styles.integrationIcon} ${styles.aiIcon}`}><Icon name="sparkles"/></span><div><small>{localCodex ? "CODEX 本機" : "OPENAI"}</small><strong>{settings.ai_filter_enabled ? "AI 語意篩選已啟用" : "AI 語意篩選已暫停"}</strong><p>{settings.ai_filter_enabled ? localCodex ? `本機排程分析，只顯示符合度達 ${Number(settings.ai_confidence_threshold) || 75}% 的內容。` : `只顯示符合度達 ${Number(settings.ai_confidence_threshold) || 75}% 的內容；判定失敗不放行。` : "目前關鍵字候選不經 AI 語意判斷。"}</p></div><i className={settings.ai_filter_enabled ? styles.okStatus : styles.pausedStatus}><Icon name={settings.ai_filter_enabled ? "check" : "close"} size={14}/>{settings.ai_filter_enabled ? localCodex ? "本機排程" : "嚴格篩選" : "已暫停"}</i></article>
           </section>
 
           <div className={styles.saveBar}><p>所有資料只供此擁有者帳號查看。</p><button type="submit" disabled={Boolean(busyAction)}>{busyAction === "save" ? "儲存中…" : "儲存設定"}</button></div>
