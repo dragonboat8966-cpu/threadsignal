@@ -1,5 +1,7 @@
 # ThreadSignal 本機 Codex 分析器
 
+首次設定先執行 `npm run local-ai:setup-secret`，再將 `data/local-ai/LOCAL_ANALYZER_SECRET.txt` 的內容填入 Vercel Production 與 Preview 的 `LOCAL_ANALYZER_SECRET`。確認網站與本機連線成功後，刪除這個一次性複製檔；真正密鑰仍保存在被 Git 忽略的 `.env.local`。
+
 每次執行必須依序完成以下流程；若任何一步失敗，停止並保留檔案，不得放行未判定資料。
 
 1. 執行 `npm run local-ai:download`。

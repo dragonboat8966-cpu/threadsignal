@@ -9,6 +9,7 @@
     "build": "next build",
     "start": "next start",
     "check": "node --check server.js && node --check public/app.js",
+    "local-ai:setup-secret": "node scripts/setup-local-ai-secret.mjs",
     "local-ai:download": "node --env-file=.env.local scripts/local-ai-download.mjs",
     "local-ai:upload": "node --env-file=.env.local scripts/local-ai-upload.mjs"
   },

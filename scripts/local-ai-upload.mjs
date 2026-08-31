@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const siteUrl = String(process.env.THREADSIGNAL_SITE_URL || "https://threadsignal-m2w6.vercel.app").replace(/\/$/, "");
-const secret = String(process.env.LOCAL_ANALYZER_SECRET || process.env.SESSION_SECRET || "").trim();
+const secret = String(process.env.LOCAL_ANALYZER_SECRET || "").trim();
 if (secret.length < 32) throw new Error("LOCAL_ANALYZER_SECRET 尚未設定或長度不足。請重新拉取 Vercel 環境變數。");
 
 const targetDir = path.resolve("data", "local-ai");

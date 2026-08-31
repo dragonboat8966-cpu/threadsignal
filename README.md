@@ -29,7 +29,7 @@
 - `CRON_SECRET`
 - `OWNER_THREADS_USER_ID`（建議）或第一次綁定用的 `OWNER_THREADS_USERNAME`
 - `AI_FILTER_PROVIDER`（`openai` 或 `local_codex`）
-- `LOCAL_ANALYZER_SECRET`（`local_codex` 可選；空白時沿用既有 `SESSION_SECRET` 作為 HMAC 密鑰）
+- `LOCAL_ANALYZER_SECRET`（`local_codex` 必要；網站與本機共用的獨立隨機密鑰）
 - `THREADSIGNAL_SITE_URL`（本機分析器使用，正式值為 `https://threadsignal-m2w6.vercel.app`）
 - `OPENAI_API_KEY`（只有網站端即時 OpenAI 模式與 AI 文案功能需要）
 - `OPENAI_MODEL`（預設 `gpt-5-mini`）
