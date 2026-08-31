@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOwner } from "../../../../lib/cloud-auth";
+import { collectionWindowDays } from "../../../../lib/collection-window";
 import { db, ensureSchema } from "../../../../lib/db";
 import { aiFilterProvider } from "../../../../lib/ai-provider";
 
@@ -20,6 +21,7 @@ export async function GET(request) {
   const settingRows = await sql`SELECT * FROM collector_settings WHERE threads_user_id=${owner.userId} LIMIT 1`;
   const settings = settingRows[0];
   const aiFilterEnabled = settings?.ai_filter_enabled !== false;
+  const collectionDays = collectionWindowDays(settings?.collection_days);
   const confidenceThreshold = Math.max(50, Math.min(95, Number(settings?.ai_confidence_threshold) || 75));
   const leads = await sql`
     SELECT id, threads_id, username, body, published_at, permalink, content_type, parent_threads_id,
@@ -27,7 +29,7 @@ export async function GET(request) {
       classification_source, classified_at, suggested_copy, copy_source, status, collected_at
     FROM leads
     WHERE threads_user_id=${owner.userId}
-      AND published_at >= NOW() - INTERVAL '7 days'
+      AND published_at >= NOW() - (${collectionDays} * INTERVAL '1 day')
       AND (${aiFilterEnabled}=FALSE OR (classification_source IN ('openai','local_codex') AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold}))
       AND (${level}='' OR demand_level=${level})
       AND (${type}='' OR content_type=${type})
@@ -37,7 +39,7 @@ export async function GET(request) {
     SELECT COUNT(*)::int total
     FROM leads
     WHERE threads_user_id=${owner.userId}
-      AND published_at >= NOW() - INTERVAL '7 days'
+      AND published_at >= NOW() - (${collectionDays} * INTERVAL '1 day')
       AND (${aiFilterEnabled}=FALSE OR (classification_source IN ('openai','local_codex') AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold}))
       AND (${level}='' OR demand_level=${level})
       AND (${type}='' OR content_type=${type})
@@ -48,7 +50,7 @@ export async function GET(request) {
       classification_source, classified_at, suggested_copy, copy_source, status, collected_at
     FROM leads
     WHERE threads_user_id=${owner.userId}
-      AND published_at >= NOW() - INTERVAL '7 days'
+      AND published_at >= NOW() - (${collectionDays} * INTERVAL '1 day')
       AND (${aiFilterEnabled}=FALSE OR (classification_source IN ('openai','local_codex') AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold}))
       AND demand_level='高需求'
     ORDER BY demand_score DESC, published_at DESC LIMIT 3`;
@@ -62,7 +64,7 @@ export async function GET(request) {
       COUNT(*) FILTER (WHERE (${aiFilterEnabled}=FALSE OR (classification_source IN ('openai','local_codex') AND ai_match=TRUE AND ai_confidence >= ${confidenceThreshold})) AND collected_at >= date_trunc('day', NOW() AT TIME ZONE 'Asia/Taipei') AT TIME ZONE 'Asia/Taipei')::int today,
       COUNT(*) FILTER (WHERE classification_source='pending')::int pending,
       COUNT(*) FILTER (WHERE classification_source IN ('openai','local_codex') AND ai_match=FALSE)::int rejected
-    FROM leads WHERE threads_user_id=${owner.userId} AND published_at >= NOW() - INTERVAL '7 days'`;
+    FROM leads WHERE threads_user_id=${owner.userId} AND published_at >= NOW() - (${collectionDays} * INTERVAL '1 day')`;
   return NextResponse.json({
     settings,
     leads,

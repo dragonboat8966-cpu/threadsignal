@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db, ensureSchema } from "../../../../lib/db";
+import { collectionWindowDays } from "../../../../lib/collection-window";
 import { generateCopyBatch } from "../../../../lib/ai-copy";
 import { screenPendingLeads } from "../../../../lib/screener";
 import { usesLocalCodex } from "../../../../lib/ai-provider";
@@ -22,13 +23,14 @@ export async function GET(request) {
   await ensureSchema();
   const sql = db();
   const accounts = await sql`
-    SELECT a.threads_user_id, s.tone, s.offer, s.ai_filter_enabled, s.ai_confidence_threshold
+    SELECT a.threads_user_id, s.tone, s.offer, s.ai_filter_enabled, s.ai_confidence_threshold, s.collection_days
     FROM threads_accounts a
     JOIN collector_settings s ON s.threads_user_id=a.threads_user_id
     WHERE a.role='owner' AND a.collection_enabled=TRUE AND s.active=TRUE`;
   const results = [];
   for (const account of accounts) {
     try {
+      const collectionDays = collectionWindowDays(account.collection_days);
       const accountStartedAt = Date.now();
       const screening = await screenPendingLeads(account.threads_user_id, { limit: 60 });
       if (screening.error || Date.now() - accountStartedAt > 10_000) {
@@ -43,7 +45,7 @@ export async function GET(request) {
       const leads = await sql`
         SELECT id, body, demand_level FROM leads
         WHERE threads_user_id=${account.threads_user_id}
-          AND published_at >= NOW() - INTERVAL '7 days'
+          AND published_at >= NOW() - (${collectionDays} * INTERVAL '1 day')
           AND copy_source='rules'
           AND (${account.ai_filter_enabled}=FALSE OR (
             classification_source IN ('openai','local_codex') AND ai_match=TRUE
