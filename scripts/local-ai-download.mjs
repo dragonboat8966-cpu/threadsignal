@@ -12,7 +12,12 @@ const text = await response.text();
 let data;
 try { data = JSON.parse(text); }
 catch { throw new Error(`網站回傳無法解析：HTTP ${response.status}`); }
-if (!response.ok) throw new Error(data.error || `下載失敗：HTTP ${response.status}`);
+if (!response.ok) {
+  const detail = typeof data.error === "string"
+    ? data.error
+    : data.error?.message || JSON.stringify(data.error || data);
+  throw new Error(detail || `下載失敗：HTTP ${response.status}`);
+}
 
 const targetDir = path.resolve("data", "local-ai");
 await fs.mkdir(targetDir, { recursive: true });
