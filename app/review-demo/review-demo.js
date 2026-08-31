@@ -24,7 +24,7 @@ export default function ReviewDemo() {
   async function search(event) {
     event.preventDefault();
     setLoading(true);
-    setStatus("");
+    setStatus("正在搜尋 Threads 並由 AI 分析全文語意…");
     setResults([]);
     try {
       const response = await fetch(`/api/threads/search?q=${encodeURIComponent(query)}`, { cache: "no-store" });
@@ -33,7 +33,7 @@ export default function ReviewDemo() {
       setResults(data.results || []);
       const diagnostics = data.diagnostics || {};
       const rawCount = (diagnostics.recentRawCount || 0) + (diagnostics.topRawCount || 0);
-      setStatus(`找到 ${data.results?.length || 0} 筆近 7 日內且不重複的公開結果。Meta 原始回傳 ${rawCount} 筆（模式：${diagnostics.mode || "未知"}；超過 7 日：${diagnostics.olderThanSevenDays || 0}；缺少日期：${diagnostics.missingTimestamp || 0}）。`);
+      setStatus(`AI 分析完成：Meta 原始回傳 ${rawCount} 筆，近 7 日候選 ${diagnostics.candidateCount || 0} 筆；符合條件 ${diagnostics.acceptedCount || 0} 筆，排除 ${diagnostics.rejectedCount || 0} 筆。只有符合度達 ${diagnostics.confidenceThreshold || 75}% 的內容會顯示。`);
     } catch (error) {
       setStatus(error.message);
     } finally {
@@ -72,9 +72,9 @@ export default function ReviewDemo() {
         {status && <p className={styles.status}>{status}</p>}
       </section>
       <section className={styles.results} aria-live="polite">
-        {results.map(item => <article key={item.id}><div className={styles.meta}><strong>@{item.username || "threads_user"}</strong><span>{item.contentType}</span><time>{new Date(item.timestamp).toLocaleString("zh-TW")}</time></div><p>{item.text || "（此結果沒有文字內容）"}</p>{item.permalink && <a href={item.permalink} target="_blank" rel="noreferrer">在 Threads 查看公開貼文</a>}</article>)}
+        {results.map(item => <article key={item.id}><div className={styles.meta}><strong>@{item.username || "threads_user"}</strong><span>{item.contentType}</span><span className={styles.aiBadge}>AI 符合 {item.aiConfidence || 0}%</span><time>{new Date(item.timestamp).toLocaleString("zh-TW")}</time></div><p>{item.text || "（此結果沒有文字內容）"}</p><p className={styles.analysis}><strong>判定原因：</strong>{item.relevanceReason || "符合你設定的語意篩選條件"}</p>{item.permalink && <a href={item.permalink} target="_blank" rel="noreferrer">在 Threads 查看公開貼文</a>}</article>)}
       </section>
-      <p className={styles.notice}>本示範僅顯示近 7 日內的公開內容，不會自動發布、留言或私訊。</p>
+      <p className={styles.notice}>搜尋時會同步進行 AI 語意分析；未通過、無法確定或分析失敗的內容都不會顯示，也不會自動發布、留言或私訊。</p>
     </main>
   );
 }

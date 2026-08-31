@@ -2,8 +2,27 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { decryptSession, THREADS_SESSION_COOKIE } from "../../../../lib/threads-session";
 import { accountWithToken } from "../../../../lib/accounts";
+import { classifyRelevanceBatch, RELEVANCE_BATCH_LIMIT } from "../../../../lib/ai-relevance";
+import { db, ensureSchema } from "../../../../lib/db";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
+
+function chunks(values, size) {
+  const output = [];
+  for (let index = 0; index < values.length; index += size) output.push(values.slice(index, index + size));
+  return output;
+}
+
+function publicAIError(error) {
+  const message = String(error?.message || error || "AI 語意分析失敗");
+  if (error?.code === "insufficient_quota" || /quota|billing|credit balance/i.test(message)) {
+    return "OpenAI API 額度不足，為避免顯示不相關內容，本次搜尋不會顯示未經 AI 判定的結果。";
+  }
+  if (error?.status === 401) return "OPENAI_API_KEY 無效，本次搜尋結果未顯示。";
+  if (error?.status === 429) return "AI 目前流量受限，請稍後再搜尋；未判定內容不會顯示。";
+  return "AI 語意分析未完成，為避免顯示不相關內容，本次搜尋結果未顯示。";
+}
 
 async function searchThreads(query, searchType, accessToken) {
   const url = new URL("https://graph.threads.net/keyword_search");
@@ -42,6 +61,25 @@ export async function GET(request) {
     return NextResponse.json({ error: "Enter a keyword between 1 and 100 characters." }, { status: 400 });
   }
 
+  await ensureSchema();
+  const sql = db();
+  const settingRows = await sql`
+    SELECT ai_filter_enabled, filter_requirements, ai_confidence_threshold
+    FROM collector_settings WHERE threads_user_id=${session.userId} LIMIT 1`;
+  const settings = settingRows[0];
+  if (!settings?.ai_filter_enabled) {
+    return NextResponse.json({
+      error: "請先到商機工作台啟用 AI 語意篩選，再執行搜尋。",
+      results: []
+    }, { status: 409 });
+  }
+  if (!process.env.OPENAI_API_KEY) {
+    return NextResponse.json({
+      error: "尚未設定 OPENAI_API_KEY；為避免顯示未經分析的內容，本次搜尋結果未顯示。",
+      results: []
+    }, { status: 503 });
+  }
+
   let recentItems;
   let topItems = [];
   try {
@@ -61,7 +99,7 @@ export async function GET(request) {
   const sourceItems = recentItems.length > 0 ? recentItems : topItems;
   let missingTimestamp = 0;
   let olderThanSevenDays = 0;
-  const results = sourceItems.filter(item => {
+  const candidates = sourceItems.filter(item => {
     if (!item.id || seen.has(item.id)) return false;
     seen.add(item.id);
     const timestamp = Date.parse(item.timestamp);
@@ -83,6 +121,52 @@ export async function GET(request) {
     contentType: item.is_reply ? "留言" : "貼文"
   }));
 
+  let decisions = [];
+  try {
+    const batches = chunks(candidates, RELEVANCE_BATCH_LIMIT);
+    decisions = (await Promise.all(batches.map(batch => classifyRelevanceBatch(
+      batch.map(item => ({
+        id: item.id,
+        body: item.text,
+        content_type: item.contentType,
+        keywords: [query]
+      })),
+      {
+        filterRequirements: settings.filter_requirements,
+        confidenceThreshold: Number(settings.ai_confidence_threshold) || 75
+      }
+    )))).flat();
+  } catch (error) {
+    return NextResponse.json({
+      error: publicAIError(error),
+      results: [],
+      diagnostics: {
+        mode: recentItems.length > 0 ? "RECENT" : "TOP_FALLBACK",
+        recentRawCount: recentItems.length,
+        topRawCount: topItems.length,
+        candidateCount: candidates.length,
+        acceptedCount: 0,
+        rejectedCount: 0,
+        missingTimestamp,
+        olderThanSevenDays,
+        aiStatus: "failed"
+      }
+    }, { status: 503, headers: { "Cache-Control": "no-store" } });
+  }
+
+  const decisionsById = new Map(decisions.map(item => [item.id, item]));
+  const results = candidates.flatMap(item => {
+    const decision = decisionsById.get(item.id);
+    if (!decision?.accepted) return [];
+    return [{
+      ...item,
+      aiConfidence: decision.confidence,
+      relevanceReason: decision.relevance_reason,
+      demandScore: decision.demand_score,
+      demandReason: decision.demand_reason
+    }];
+  });
+
   return NextResponse.json({
     query,
     results,
@@ -90,8 +174,13 @@ export async function GET(request) {
       mode: recentItems.length > 0 ? "RECENT" : "TOP_FALLBACK",
       recentRawCount: recentItems.length,
       topRawCount: topItems.length,
+      candidateCount: candidates.length,
+      acceptedCount: results.length,
+      rejectedCount: Math.max(0, candidates.length - results.length),
       missingTimestamp,
-      olderThanSevenDays
+      olderThanSevenDays,
+      aiStatus: "complete",
+      confidenceThreshold: Number(settings.ai_confidence_threshold) || 75
     }
   }, { headers: { "Cache-Control": "no-store" } });
 }
