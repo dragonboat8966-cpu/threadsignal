@@ -531,8 +531,8 @@ export default function Dashboard() {
         </button>
       </nav>
       <div className={styles.sidebarFoot}>
-        <div><span className={settings.active ? styles.liveDot : styles.offDot}/><strong>{settings.active ? "每日自動運行" : "自動蒐集已暫停"}</strong></div>
-        <small>下次執行：約 08:30–09:29</small>
+        <div><span className={settings.active ? styles.liveDot : styles.offDot}/><strong>{settings.active ? "每小時自動運行" : "自動蒐集已暫停"}</strong></div>
+        <small>執行頻率：每小時一次</small>
         <small>Threads：@{data.account?.username || "已連線"}</small>
       </div>
     </aside>
@@ -572,7 +572,7 @@ export default function Dashboard() {
 
         {settings.ai_filter_enabled && <section className={styles.aiStatusStrip} aria-label="AI 語意篩選狀態">
           <span><Icon name="sparkles" size={17}/></span>
-          <div><strong>{localCodex ? "本機 Codex 語意篩選已啟用" : "AI 語意篩選已啟用"}</strong><small>關鍵字只負責找候選；只有 AI 判定符合且信心達 {Number(settings.ai_confidence_threshold) || 75}% 的內容才會顯示。{localCodex ? " 本機排程約每 15 分鐘處理一次。" : ""}</small></div>
+          <div><strong>{localCodex ? "本機 Codex 語意篩選已啟用" : "AI 語意篩選已啟用"}</strong><small>關鍵字只負責找候選；只有 AI 判定符合且信心達 {Number(settings.ai_confidence_threshold) || 75}% 的內容才會顯示。{localCodex ? " 本機排程每小時先蒐集，再立即分析。" : ""}</small></div>
           <dl><div><dt>待判定</dt><dd>{pendingAiCount}</dd></div><div><dt>已排除</dt><dd>{rejectedAiCount}</dd></div></dl>
           <button type="button" className={styles.aiScreenButton} onClick={rescreenPending} disabled={localCodex || !pendingAiCount || Boolean(busyAction)}><Icon name="refresh" size={15}/>{localCodex ? "等待本機排程" : busyAction === "screen" ? "判定中…" : "重新篩選待判定"}</button>
         </section>}
@@ -671,13 +671,13 @@ export default function Dashboard() {
           </section>
 
           <section className={styles.settingsCard}>
-            <div className={styles.settingHead}><span>03</span><div><h2>每日蒐集</h2><p>以台北時間執行；達不到目標時顯示差額，不會用重複資料補足。</p></div></div>
+            <div className={styles.settingHead}><span>03</span><div><h2>每小時蒐集</h2><p>本機 Codex 排程每小時先蒐集再分析；同一小時重跑不會重複收錄。</p></div></div>
             <div className={styles.twoFields}>
               <label><span>蒐集最近幾天</span><input type="number" min="1" max="30" value={settings.collection_days} onChange={event => setSettings(current => ({ ...current, collection_days: Number(event.target.value) }))}/><small>可設定 1–30 天，預設 7 天。</small></label>
-              <label><span>每日目標筆數</span><input type="number" min="1" max="1000" value={settings.target_per_day} onChange={event => setSettings(current => ({ ...current, target_per_day: Number(event.target.value) }))}/></label>
-              <label className={styles.wideField}><span>預定執行時段</span><input value="08:30–09:29" disabled/><small>Vercel 免費方案會在這一小時內觸發。</small></label>
+              <label><span>每次目標筆數</span><input type="number" min="1" max="1000" value={settings.target_per_day} onChange={event => setSettings(current => ({ ...current, target_per_day: Number(event.target.value) }))}/></label>
+              <label className={styles.wideField}><span>執行頻率</span><input value="每小時一次" disabled/><small>由本機 Codex 排程觸發；Vercel 每日排程保留為備援。</small></label>
             </div>
-            <label className={styles.switchRow}><span><strong>啟用每日自動蒐集</strong><small>關閉後仍可使用上方的「立即蒐集」。</small></span><input type="checkbox" checked={Boolean(settings.active)} onChange={event => setSettings(current => ({ ...current, active: event.target.checked }))}/><i/></label>
+            <label className={styles.switchRow}><span><strong>啟用每小時自動蒐集</strong><small>需保持本機與 Codex 排程可執行；關閉後仍可使用上方的「立即蒐集」。</small></span><input type="checkbox" checked={Boolean(settings.active)} onChange={event => setSettings(current => ({ ...current, active: event.target.checked }))}/><i/></label>
           </section>
 
           <section className={styles.settingsCard}>

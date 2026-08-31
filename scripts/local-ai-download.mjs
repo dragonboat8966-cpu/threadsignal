@@ -20,4 +20,9 @@ const target = path.join(targetDir, "pending.json");
 const temporary = `${target}.tmp`;
 await fs.writeFile(temporary, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 await fs.rename(temporary, target);
-console.log(JSON.stringify({ ok: true, count: data.items?.length || 0, file: target }));
+console.log(JSON.stringify({
+  ok: true,
+  count: data.items?.length || 0,
+  collection: data.collection || null,
+  file: target
+}));
