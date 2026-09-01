@@ -11,7 +11,8 @@
     "check": "node --check server.js && node --check public/app.js",
     "local-ai:setup-secret": "node scripts/setup-local-ai-secret.mjs",
     "local-ai:download": "node --env-file=.env.local scripts/local-ai-download.mjs",
-    "local-ai:upload": "node --env-file=.env.local scripts/local-ai-upload.mjs"
+    "local-ai:upload": "node --env-file=.env.local scripts/local-ai-upload.mjs",
+    "local-ai:sync": "node --env-file=.env.local scripts/local-ai-sync.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
