@@ -21,6 +21,7 @@ const defaults = {
 const viewLabels = {
   overview: { eyebrow: "THREADS LEAD INTELLIGENCE", title: "今天的商機雷達" },
   leads: { eyebrow: "OPPORTUNITY WORKSPACE", title: "商機池" },
+  history: { eyebrow: "HOURLY COLLECTION LOG", title: "每小時紀錄" },
   settings: { eyebrow: "COLLECTION PREFERENCES", title: "蒐集設定" }
 };
 
@@ -39,6 +40,7 @@ function Icon({ name, size = 20 }) {
 
   if (name === "overview") return <svg {...common}><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>;
   if (name === "leads") return <svg {...common}><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>;
+  if (name === "history") return <svg {...common}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>;
   if (name === "settings") return <svg {...common}><path d="M4 6h10M18 6h2M4 12h3M11 12h9M4 18h8M16 18h4"/><circle cx="16" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="14" cy="18" r="2"/></svg>;
   if (name === "refresh") return <svg {...common}><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>;
   if (name === "sparkles") return <svg {...common}><path d="m12 3 1.1 3.1L16 7.5l-2.9 1.4L12 12l-1.1-3.1L8 7.5l2.9-1.4L12 3Z"/><path d="m18.5 13 .8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/><path d="m5.5 13 .7 1.8L8 15.5l-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8Z"/></svg>;
@@ -112,6 +114,18 @@ function resultCount(result, ...keys) {
   return 0;
 }
 
+function triggerLabel(value) {
+  if (value === "local_hourly") return "每小時排程";
+  if (value === "cron") return "Vercel 備援";
+  return "手動蒐集";
+}
+
+function outcomeLabel(value) {
+  if (value === "accepted") return "AI 通過";
+  if (value === "rejected") return "AI 排除";
+  return "待判定";
+}
+
 function EmptyState({ title, body, action, onAction }) {
   return <div className={styles.emptyState}>
     <span className={styles.emptyMark}><Icon name="sparkles" size={25} /></span>
@@ -150,6 +164,11 @@ export default function Dashboard() {
   const [activeLead, setActiveLead] = useState(null);
   const [copyDraft, setCopyDraft] = useState("");
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [historyRuns, setHistoryRuns] = useState([]);
+  const [historyItems, setHistoryItems] = useState([]);
+  const [selectedRunId, setSelectedRunId] = useState("");
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [historyError, setHistoryError] = useState("");
   const copyCloseRef = useRef(null);
   const deleteCancelRef = useRef(null);
   const loadRequestRef = useRef(0);
@@ -217,6 +236,13 @@ export default function Dashboard() {
   }, [toast]);
 
   useEffect(() => {
+    if (view !== "history" || data?.unauthorized) return;
+    loadHistory().catch(error => setHistoryError(error.message || "紀錄載入失敗"));
+    // Only reload when entering the history view.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+
+  useEffect(() => {
     function onKeyDown(event) {
       if (event.key !== "Escape") return;
       setActiveLead(null);
@@ -268,10 +294,52 @@ export default function Dashboard() {
     setBusyAction("refresh");
     try {
       await load({ quiet: true });
+      if (view === "history") await loadHistory();
       notify("工作台資料已更新。");
     } catch (error) {
       setBusyAction("");
       notify(error.message, "error");
+    }
+  }
+
+  async function loadHistoryItems(runId) {
+    if (!runId) {
+      setHistoryItems([]);
+      return;
+    }
+    const response = await fetch(`/api/dashboard/history/${encodeURIComponent(runId)}`, { cache: "no-store" });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "單次紀錄載入失敗");
+    setHistoryItems(result.items || []);
+  }
+
+  async function loadHistory(preferredRunId = selectedRunId) {
+    setHistoryBusy(true);
+    setHistoryError("");
+    try {
+      const response = await fetch("/api/dashboard/history", { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "每小時紀錄載入失敗");
+      const runs = result.runs || [];
+      setHistoryRuns(runs);
+      const runId = runs.some(run => run.id === preferredRunId) ? preferredRunId : (runs[0]?.id || "");
+      setSelectedRunId(runId);
+      await loadHistoryItems(runId);
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
+
+  async function selectHistoryRun(runId) {
+    setSelectedRunId(runId);
+    setHistoryBusy(true);
+    setHistoryError("");
+    try {
+      await loadHistoryItems(runId);
+    } catch (error) {
+      setHistoryError(error.message || "單次紀錄載入失敗");
+    } finally {
+      setHistoryBusy(false);
     }
   }
 
@@ -526,6 +594,9 @@ export default function Dashboard() {
         <button type="button" className={view === "leads" ? styles.activeNav : ""} aria-current={view === "leads" ? "page" : undefined} onClick={() => setView("leads")}>
           <Icon name="leads"/><span>商機池</span><b>{stats.total || 0}</b>
         </button>
+        <button type="button" className={view === "history" ? styles.activeNav : ""} aria-current={view === "history" ? "page" : undefined} onClick={() => setView("history")}>
+          <Icon name="history"/><span>每小時紀錄</span><b>{historyRuns.length || ""}</b>
+        </button>
         <button type="button" className={view === "settings" ? styles.activeNav : ""} aria-current={view === "settings" ? "page" : undefined} onClick={() => setView("settings")}>
           <Icon name="settings"/><span>蒐集設定</span>
         </button>
@@ -642,6 +713,45 @@ export default function Dashboard() {
           )}
           {leads.length < matchedTotal && <div className={styles.loadMoreRow}><button type="button" className={styles.secondaryButton} onClick={loadMore} disabled={Boolean(busyAction)}>{busyAction === "more" ? "載入中…" : `載入更多（尚有 ${matchedTotal - leads.length} 筆）`}</button></div>}
         </section>
+      </div>}
+
+      {view === "history" && <div className={`${styles.view} ${styles.historyView}`}>
+        <section className={styles.historyIntro}>
+          <div><h2>今天每次蒐集的完整結果</h2><p>包含 AI 通過、排除與待判定內容；台北時間午夜後，舊紀錄會由下一次排程自動清除。</p></div>
+          <button type="button" className={styles.secondaryButton} onClick={() => loadHistory().catch(error => setHistoryError(error.message))} disabled={historyBusy}><Icon name="refresh" size={16}/>{historyBusy ? "更新中…" : "更新紀錄"}</button>
+        </section>
+
+        {historyError && <p className={styles.historyError}>{historyError}</p>}
+        {!historyRuns.length && !historyBusy ? <EmptyState title="今天還沒有新紀錄" body="下一次每小時排程或手動蒐集完成後，會在這裡顯示候選與 AI 篩選結果。"/> : <div className={styles.historyLayout}>
+          <section className={styles.runList} aria-label="今天的蒐集批次">
+            {historyRuns.map(run => <button type="button" key={run.id} className={`${styles.runCard} ${selectedRunId === run.id ? styles.selectedRun : ""}`} onClick={() => selectHistoryRun(run.id)} disabled={historyBusy}>
+              <span><b>{formatDate(run.started_at, true)}</b><small>{triggerLabel(run.trigger_type)}</small></span>
+              <strong>{Number(run.candidate_count) || 0} 筆候選</strong>
+              <dl>
+                <div><dt>通過</dt><dd>{Number(run.current_accepted_count) || 0}</dd></div>
+                <div><dt>排除</dt><dd>{Number(run.current_rejected_count) || 0}</dd></div>
+                <div><dt>待判定</dt><dd>{Number(run.current_pending_count) || 0}</dd></div>
+              </dl>
+              <em>{run.status === "failed" ? "執行失敗" : run.status === "running" ? "執行中" : `原始 ${Number(run.raw_count) || 0}・重複 ${Number(run.duplicate_count) || 0}`}</em>
+            </button>)}
+          </section>
+
+          <section className={styles.historyResults} aria-live="polite">
+            <header><div><p className={styles.eyebrow}>RUN DETAILS</p><h3>{selectedRunId ? "本次新增候選" : "選擇一筆紀錄"}</h3></div><span>{historyItems.length} 筆</span></header>
+            {historyBusy && !historyItems.length ? <div className={styles.historyLoading}><span className={styles.spinner}/><p>載入本次結果…</p></div> : historyItems.length ? <div className={styles.historyItemList}>
+              {historyItems.map(item => <article className={styles.historyItem} key={item.id}>
+                <div className={styles.historyItemTop}>
+                  <span className={`${styles.outcomeBadge} ${styles[item.outcome]}`}>{outcomeLabel(item.outcome)}</span>
+                  <strong>@{item.username || "threads_user"}</strong>
+                  <small>{item.content_type || "貼文"}・{formatDate(item.published_at, true)}</small>
+                </div>
+                <p>{item.body || "（沒有文字內容）"}</p>
+                <div className={styles.historyReason}><Icon name="sparkles" size={14}/><span>{item.relevance_reason || (item.outcome === "pending" ? "等待本機 Codex AI 判定" : "尚未提供判定理由")}</span></div>
+                <footer><span>{normalizeKeywords(item.keywords).slice(0, 4).map(keyword => <i key={keyword}>#{keyword}</i>)}</span>{item.permalink && <a href={item.permalink} target="_blank" rel="noreferrer">查看 Threads <Icon name="external" size={14}/></a>}</footer>
+              </article>)}
+            </div> : <EmptyState title="這次沒有新增候選" body="原始搜尋結果可能都已在先前收錄、超過日期範圍，或不符合基本資料格式。"/>}
+          </section>
+        </div>}
       </div>}
 
       {view === "settings" && <div className={`${styles.view} ${styles.settingsView}`}>
