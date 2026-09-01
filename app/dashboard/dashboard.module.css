@@ -1587,6 +1587,90 @@
   background: #a5453a;
 }
 
+.historyView { display: grid; gap: 18px; }
+
+.historyIntro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 24px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: var(--card);
+}
+
+.historyIntro h2 { margin: 0 0 7px; font: 500 25px Georgia, "Noto Serif TC", serif; }
+.historyIntro p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.historyIntro button { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.historyError { margin: 0; padding: 12px 14px; color: #8c342c; font-size: 12px; border: 1px solid #efc9c3; border-radius: 11px; background: #fff2ef; }
+
+.historyLayout {
+  display: grid;
+  grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+
+.runList { display: grid; gap: 10px; }
+
+.runCard {
+  display: grid;
+  gap: 11px;
+  padding: 16px;
+  text-align: left;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--card);
+  cursor: pointer;
+  transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+
+.runCard:hover { transform: translateY(-1px); border-color: #9eafa7; box-shadow: 0 10px 24px rgba(30, 62, 51, .07); }
+.runCard:disabled { cursor: wait; }
+.selectedRun { border-color: var(--green); box-shadow: inset 3px 0 0 var(--green); }
+.runCard > span { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.runCard > span b { font-size: 13px; }
+.runCard > span small { color: var(--muted); font-size: 10px; }
+.runCard > strong { font: 500 21px Georgia, "Noto Serif TC", serif; }
+.runCard dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0; }
+.runCard dl div { padding: 8px; text-align: center; border-radius: 9px; background: #f3f5f2; }
+.runCard dt { color: var(--muted); font-size: 9px; }
+.runCard dd { margin: 3px 0 0; font-size: 14px; font-weight: 850; }
+.runCard em { color: var(--muted); font-size: 9px; font-style: normal; }
+
+.historyResults {
+  overflow: hidden;
+  min-height: 360px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: var(--card);
+}
+
+.historyResults > header { display: flex; align-items: center; justify-content: space-between; padding: 19px 21px; border-bottom: 1px solid var(--line); }
+.historyResults > header .eyebrow { margin: 0 0 4px; }
+.historyResults > header h3 { margin: 0; font: 500 22px Georgia, "Noto Serif TC", serif; }
+.historyResults > header > span { padding: 6px 10px; color: var(--green); font-size: 11px; font-weight: 850; border-radius: 999px; background: #e5f2ec; }
+.historyLoading { display: grid; min-height: 280px; place-items: center; align-content: center; gap: 10px; color: var(--muted); font-size: 11px; }
+.historyItemList { display: grid; max-height: 720px; overflow-y: auto; }
+.historyItem { display: grid; gap: 11px; padding: 18px 20px; border-bottom: 1px solid #ece9e2; }
+.historyItem:last-child { border-bottom: 0; }
+.historyItemTop { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.historyItemTop strong { font-size: 12px; }
+.historyItemTop small { color: var(--muted); font-size: 10px; }
+.outcomeBadge { padding: 5px 8px; font-size: 9px; font-weight: 850; border-radius: 999px; }
+.accepted { color: #176947; background: #daf0e5; }
+.rejected { color: #9a4036; background: #fbe1dc; }
+.pending { color: #78601f; background: #f7ecc8; }
+.historyItem > p { margin: 0; font-size: 12px; line-height: 1.75; white-space: pre-wrap; }
+.historyReason { display: flex; align-items: flex-start; gap: 7px; padding: 9px 10px; color: #52665d; font-size: 10px; line-height: 1.55; border-radius: 9px; background: #f1f6f3; }
+.historyReason svg { flex: 0 0 auto; margin-top: 1px; }
+.historyItem footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.historyItem footer > span { display: flex; gap: 5px; flex-wrap: wrap; }
+.historyItem footer i { color: #986052; font-size: 9px; font-style: normal; }
+.historyItem footer a { display: inline-flex; align-items: center; gap: 5px; color: #23654f; font-size: 10px; font-weight: 800; text-decoration: none; white-space: nowrap; }
+
 .toast {
   position: fixed;
   right: 25px;
@@ -1694,6 +1778,8 @@
   .leadScore { grid-column: 2 / 3; grid-row: 2; display: flex; align-items: center; }
   .leadActions { grid-column: 3; grid-row: 1 / 3; }
   .integrationGrid { grid-template-columns: 1fr; }
+  .historyLayout { grid-template-columns: 1fr; }
+  .runList { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 760px) {
@@ -1760,6 +1846,10 @@
   .copyModal footer > div { width: 100%; }
   .copyModal footer button { flex: 1; }
   .toast { right: 14px; bottom: 14px; width: calc(100vw - 28px); }
+  .historyIntro { align-items: stretch; flex-direction: column; }
+  .historyIntro button { justify-content: center; }
+  .runList { grid-template-columns: 1fr; }
+  .historyItem footer { align-items: flex-start; flex-direction: column; }
 }
 
 @media (max-width: 480px) {
