@@ -43,13 +43,15 @@ export async function POST(request) {
     WHERE threads_user_id=${userId} AND classification_source='pending' AND id::text = ANY(${ids}::text[])
       AND published_at >= NOW() - (${collectionDays} * INTERVAL '1 day')`;
   const expectedIds = pending.map(row => row.id);
-  if (expectedIds.length !== ids.length) {
-    return NextResponse.json({ error: "部分資料已處理、已過期或不屬於此帳號；請重新下載待判定資料。" }, { status: 409 });
-  }
+  const expectedIdSet = new Set(expectedIds);
+  const eligibleItems = body.items.filter(item => expectedIdSet.has(String(item?.id || "")));
+  const ignoredCount = body.items.length - eligibleItems.length;
 
-  let results;
-  try { results = validateRelevanceBatchOutput({ items: body.items }, expectedIds); }
-  catch (error) { return NextResponse.json({ error: String(error.message || error).slice(0, 500) }, { status: 400 }); }
+  let results = [];
+  if (eligibleItems.length) {
+    try { results = validateRelevanceBatchOutput({ items: eligibleItems }, expectedIds); }
+    catch (error) { return NextResponse.json({ error: String(error.message || error).slice(0, 500) }, { status: 400 }); }
+  }
 
   const updates = results.map(result => ({
     id: result.id,
@@ -82,6 +84,7 @@ export async function POST(request) {
   return NextResponse.json({
     ok: true,
     processedCount: updates.length,
+    ignoredCount,
     acceptedCount: updates.filter(item => item.ai_match).length,
     rejectedCount: updates.filter(item => !item.ai_match).length,
     pendingCount: Number(pendingRows[0]?.count || 0)
