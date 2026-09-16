@@ -9,7 +9,13 @@ if (secret.length < 32) throw new Error("LOCAL_ANALYZER_SECRET 尚未設定或�
 const targetDir = path.resolve("data", "local-ai");
 const pendingPath = path.join(targetDir, "pending.json");
 const resultsPath = path.join(targetDir, "results.json");
-const results = JSON.parse(await fs.readFile(resultsPath, "utf8"));
+const rawResults = await fs.readFile(resultsPath, "utf8");
+// Codex may occasionally leave a leading diff marker when creating the JSON file.
+// Accept only this narrow, recognizable artifact; all other malformed JSON still fails closed.
+const normalizedResults = rawResults
+  .replace(/^\uFEFF/, "")
+  .replace(/^\+\s*(?=\{)/, "");
+const results = JSON.parse(normalizedResults);
 const rawBody = JSON.stringify(results);
 const timestamp = String(Math.floor(Date.now() / 1000));
 const signature = crypto.createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
