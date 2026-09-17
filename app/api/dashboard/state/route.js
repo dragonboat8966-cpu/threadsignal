@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { requireOwner } from "../../../../lib/cloud-auth";
 import { collectionWindowDays } from "../../../../lib/collection-window";
 import { db, ensureSchema } from "../../../../lib/db";
-import { aiFilterProvider } from "../../../../lib/ai-provider";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,7 +76,7 @@ export async function GET(request) {
     account: owner.account,
     capabilities: {
       openaiConfigured: Boolean(process.env.OPENAI_API_KEY),
-      aiProvider: aiFilterProvider(),
+      aiProvider: settings?.ai_provider || "openai",
       semanticFailClosed: true
     }
   }, { headers: { "Cache-Control": "no-store" } });

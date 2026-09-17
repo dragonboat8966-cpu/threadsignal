@@ -566,8 +566,8 @@ export default function Dashboard() {
       <div className={styles.brandMark}>TS</div>
       <p className={styles.eyebrow}>THREADS CONNECTION REQUIRED</p>
       <h1>重新連線後繼續</h1>
-      <p>為了保護搜尋資料，請使用已核准的擁有者 Threads 帳號重新授權。</p>
-      <a href="/api/auth/threads/start">使用 Threads 重新連線</a>
+      <p>請使用你的 Threads 帳號連線；每位使用者都有彼此隔離的設定與搜尋資料。</p>
+      <a href="/api/auth/threads/start?next=/dashboard">使用 Threads 連線</a>
     </section>
   </div>;
 

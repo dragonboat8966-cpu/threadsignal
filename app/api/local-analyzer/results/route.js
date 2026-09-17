@@ -4,7 +4,7 @@ import { localAnalyzerOwner } from "../../../../lib/local-analyzer-owner";
 import { collectionWindowDays } from "../../../../lib/collection-window";
 import { db, ensureSchema } from "../../../../lib/db";
 import { isRelevanceAccepted, validateRelevanceBatchOutput } from "../../../../lib/ai-relevance";
-import { LOCAL_CODEX_PROVIDER, usesLocalCodex } from "../../../../lib/ai-provider";
+import { LOCAL_CODEX_PROVIDER } from "../../../../lib/ai-provider";
 
 export const runtime = "nodejs";
 
@@ -15,7 +15,6 @@ function demandLevel(score) {
 export async function POST(request) {
   const rawBody = await request.text();
   try {
-    if (!usesLocalCodex()) return NextResponse.json({ error: "本機 Codex 分析模式尚未啟用。" }, { status: 409 });
     if (!authorizeLocalUpload(request, rawBody)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   } catch {
     return NextResponse.json({ error: "本機分析密鑰尚未設定。" }, { status: 503 });

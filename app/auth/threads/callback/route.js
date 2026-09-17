@@ -5,8 +5,12 @@ import { saveAuthorizedAccount } from "../../../../lib/accounts";
 
 export const runtime = "nodejs";
 
-function redirectWithError(origin, message) {
-  const url = new URL("/review-demo", origin);
+function safeNextPath(value) {
+  return value === "/dashboard" ? "/dashboard" : "/review-demo";
+}
+
+function redirectWithError(origin, message, nextPath = "/review-demo") {
+  const url = new URL(safeNextPath(nextPath), origin);
   url.searchParams.set("error", message);
   return NextResponse.redirect(url);
 }
@@ -19,17 +23,18 @@ export async function GET(request) {
   const oauthError = requestUrl.searchParams.get("error_message") || requestUrl.searchParams.get("error");
   const store = await cookies();
   const expectedState = store.get("threadsignal_oauth_state")?.value;
+  const nextPath = safeNextPath(store.get("threadsignal_oauth_next")?.value);
 
-  if (oauthError) return redirectWithError(origin, oauthError);
-  if (!code) return redirectWithError(origin, "Threads did not return an authorization code.");
+  if (oauthError) return redirectWithError(origin, oauthError, nextPath);
+  if (!code) return redirectWithError(origin, "Threads did not return an authorization code.", nextPath);
   if (!returnedState || !expectedState || returnedState !== expectedState) {
-    return redirectWithError(origin, "OAuth state validation failed. Please try connecting again.");
+    return redirectWithError(origin, "OAuth state validation failed. Please try connecting again.", nextPath);
   }
 
   const appId = process.env.THREADS_APP_ID;
   const secret = process.env.THREADS_APP_SECRET;
   const redirectUri = process.env.THREADS_REDIRECT_URI || `${origin}/auth/threads/callback`;
-  if (!appId || !secret) return redirectWithError(origin, "The Threads OAuth server configuration is incomplete.");
+  if (!appId || !secret) return redirectWithError(origin, "The Threads OAuth server configuration is incomplete.", nextPath);
 
   try {
     const tokenUrl = new URL("https://graph.threads.net/oauth/access_token");
@@ -84,7 +89,9 @@ export async function GET(request) {
       username,
       expiresAt: Date.now() + expiresIn * 1000
     });
-    const response = NextResponse.redirect(new URL("/review-demo?connected=1", origin));
+    const destination = new URL(nextPath, origin);
+    destination.searchParams.set("connected", "1");
+    const response = NextResponse.redirect(destination);
     response.cookies.set(THREADS_SESSION_COOKIE, session, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -99,10 +106,17 @@ export async function GET(request) {
       path: "/",
       maxAge: 0
     });
+    response.cookies.set("threadsignal_oauth_next", "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 0
+    });
     return response;
   } catch (error) {
     console.error("Threads OAuth callback failed", error);
-    return redirectWithError(origin, "Threads 連線失敗，請稍後再試；若持續發生，請聯絡服務管理者。");
+    return redirectWithError(origin, "Threads 連線失敗，請稍後再試；若持續發生，請聯絡服務管理者。", nextPath);
   }
 }
 
