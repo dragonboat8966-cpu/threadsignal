@@ -129,16 +129,6 @@ async function syncWorkspace(workspace) {
   return { userId: workspace.userId, username: workspace.username, uploaded, downloaded };
 }
 
-async function removeDisconnectedWorkspaces(activeIds) {
-  let entries = [];
-  try { entries = await fs.readdir(workspacesRoot, { withFileTypes: true }); }
-  catch { return; }
-  for (const entry of entries) {
-    if (!entry.isDirectory() || !/^[A-Za-z0-9_-]{1,128}$/.test(entry.name) || activeIds.has(entry.name)) continue;
-    await fs.rm(workspaceDirectory(entry.name), { recursive: true, force: true });
-  }
-}
-
 await fs.mkdir(workspacesRoot, { recursive: true });
 let collection;
 try { collection = await requestJson("/api/local-analyzer/collect", { method: "POST" }); }
@@ -154,5 +144,4 @@ for (const workspace of workspaces) {
     results.push({ userId: workspace.userId, username: workspace.username, error: String(error.message || error).slice(0, 500) });
   }
 }
-await removeDisconnectedWorkspaces(new Set(workspaces.map(item => String(item.userId))));
 console.log(JSON.stringify({ ok: true, collection, workspaceCount: workspaces.length, results }));
