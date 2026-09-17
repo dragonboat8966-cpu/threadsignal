@@ -5,7 +5,7 @@ import { accountWithToken } from "../../../../lib/accounts";
 import { classifyRelevanceBatch, RELEVANCE_BATCH_LIMIT } from "../../../../lib/ai-relevance";
 import { collectionCutoffTimestamp, collectionWindowDays } from "../../../../lib/collection-window";
 import { db, ensureSchema } from "../../../../lib/db";
-import { usesLocalCodex } from "../../../../lib/ai-provider";
+import { isLocalCodexProvider } from "../../../../lib/ai-provider";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -68,7 +68,7 @@ export async function GET(request) {
   await ensureSchema();
   const sql = db();
   const settingRows = await sql`
-    SELECT ai_filter_enabled, filter_requirements, ai_confidence_threshold, collection_days
+    SELECT ai_provider, ai_filter_enabled, filter_requirements, ai_confidence_threshold, collection_days
     FROM collector_settings WHERE threads_user_id=${session.userId} LIMIT 1`;
   const settings = settingRows[0];
   const collectionDays = collectionWindowDays(settings?.collection_days);
@@ -80,7 +80,7 @@ export async function GET(request) {
       results: []
     }, { status: 409 });
   }
-  if (usesLocalCodex()) {
+  if (isLocalCodexProvider(settings?.ai_provider)) {
     return NextResponse.json({
       error: "目前使用本機 Codex 排程分析。請到商機工作台按「立即蒐集」；候選內容完成本機判定後才會顯示。",
       results: []

@@ -3,7 +3,6 @@ import { db, ensureSchema } from "../../../../lib/db";
 import { collectionWindowDays } from "../../../../lib/collection-window";
 import { generateCopyBatch } from "../../../../lib/ai-copy";
 import { screenPendingLeads } from "../../../../lib/screener";
-import { usesLocalCodex } from "../../../../lib/ai-provider";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -12,9 +11,6 @@ export async function GET(request) {
   const expected = process.env.CRON_SECRET;
   if (!expected || request.headers.get("authorization") !== `Bearer ${expected}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (usesLocalCodex()) {
-    return NextResponse.json({ ok: true, skipped: true, reason: "已改由本機 Codex 排程執行語意判定；Vercel 不會呼叫 OpenAI API。" });
   }
   if (!process.env.OPENAI_API_KEY) {
     return NextResponse.json({ ok: true, skipped: true, reason: "OPENAI_API_KEY 尚未設定；待判定候選內容維持隱藏，不會以關鍵字結果放行。" });
@@ -26,7 +22,7 @@ export async function GET(request) {
     SELECT a.threads_user_id, s.tone, s.offer, s.ai_filter_enabled, s.ai_confidence_threshold, s.collection_days
     FROM threads_accounts a
     JOIN collector_settings s ON s.threads_user_id=a.threads_user_id
-    WHERE a.role='owner' AND a.collection_enabled=TRUE AND s.active=TRUE`;
+    WHERE a.collection_enabled=TRUE AND s.active=TRUE AND s.ai_provider='openai'`;
   const results = [];
   for (const account of accounts) {
     try {

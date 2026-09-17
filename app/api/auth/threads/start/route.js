@@ -10,6 +10,8 @@ export async function GET(request) {
   }
 
   const origin = new URL(request.url).origin;
+  const requestedNext = new URL(request.url).searchParams.get("next") || "";
+  const nextPath = requestedNext === "/dashboard" ? "/dashboard" : "/review-demo";
   const redirectUri = process.env.THREADS_REDIRECT_URI || `${origin}/auth/threads/callback`;
   const state = crypto.randomBytes(24).toString("base64url");
   const authorize = new URL("https://threads.net/oauth/authorize");
@@ -23,6 +25,13 @@ export async function GET(request) {
 
   const response = NextResponse.redirect(authorize);
   response.cookies.set("threadsignal_oauth_state", state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 10 * 60
+  });
+  response.cookies.set("threadsignal_oauth_next", nextPath, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",

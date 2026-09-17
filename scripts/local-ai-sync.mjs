@@ -14,6 +14,14 @@ async function exists(file) {
   }
 }
 
+try {
+  await import("./local-ai-workspaces.mjs");
+} catch (error) {
+  // Do not let one workspace's collection or OpenAI failure block a completed
+  // local Codex batch from being uploaded for the owner workspace.
+  console.error(JSON.stringify({ workspaceCycleError: String(error.message || error).slice(0, 500) }));
+}
+
 if (await exists(resultsPath)) {
   await import("./local-ai-upload.mjs");
 }

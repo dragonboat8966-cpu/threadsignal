@@ -2,9 +2,7 @@ import { NextResponse } from "next/server";
 import { authorizeLocalDownload } from "../../../../lib/local-analyzer-auth";
 import { localAnalyzerOwner } from "../../../../lib/local-analyzer-owner";
 import { collectionWindowDays } from "../../../../lib/collection-window";
-import { collectAccount } from "../../../../lib/collector";
 import { db, ensureSchema } from "../../../../lib/db";
-import { usesLocalCodex } from "../../../../lib/ai-provider";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,7 +10,6 @@ export const maxDuration = 60;
 
 export async function GET(request) {
   try {
-    if (!usesLocalCodex()) return NextResponse.json({ error: "本機 Codex 分析模式尚未啟用。" }, { status: 409 });
     if (!authorizeLocalDownload(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   } catch {
     return NextResponse.json({ error: "本機分析密鑰尚未設定。" }, { status: 503 });
@@ -24,21 +21,12 @@ export async function GET(request) {
   if (!userId) return NextResponse.json({ error: "找不到已啟用的擁有者帳號。" }, { status: 404 });
 
   const settingRows = await sql`
-    SELECT active, ai_filter_enabled, filter_requirements, ai_confidence_threshold, collection_days
+    SELECT active, ai_provider, ai_filter_enabled, filter_requirements, ai_confidence_threshold, collection_days
     FROM collector_settings WHERE threads_user_id=${userId} LIMIT 1`;
   const settings = settingRows[0];
   if (!settings) return NextResponse.json({ error: "找不到蒐集設定，請先在網站儲存設定。" }, { status: 404 });
   const collectionDays = collectionWindowDays(settings?.collection_days);
-  let collection = { skipped: true, reason: "每小時自動蒐集已暫停" };
-  if (settings.active !== false) {
-    try {
-      collection = await collectAccount(userId, { triggerType: "local_hourly" });
-    } catch (error) {
-      return NextResponse.json({
-        error: `每小時自動蒐集失敗：${String(error.message || error).slice(0, 300)}`
-      }, { status: 502 });
-    }
-  }
+  const collection = { skipped: true, reason: "自動蒐集已由獨立的多人背景循環執行" };
   if (!settings?.ai_filter_enabled) {
     return NextResponse.json({
       version: 1,
