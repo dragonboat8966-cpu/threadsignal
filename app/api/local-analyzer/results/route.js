@@ -29,11 +29,19 @@ export async function POST(request) {
 
   await ensureSchema();
   const sql = db();
-  const userId = await localAnalyzerOwner();
-  if (!userId) return NextResponse.json({ error: "找不到已啟用的擁有者帳號。" }, { status: 404 });
+  const requestedUserId = String(body.userId || "");
+  if (requestedUserId && !/^[A-Za-z0-9_-]{1,128}$/.test(requestedUserId)) {
+    return NextResponse.json({ error: "工作區帳號格式無效。" }, { status: 400 });
+  }
+  const userId = requestedUserId || await localAnalyzerOwner();
+  if (!userId) return NextResponse.json({ error: "找不到已啟用的本機分析工作區。" }, { status: 404 });
   const settingRows = await sql`
-    SELECT ai_confidence_threshold, collection_days FROM collector_settings
-    WHERE threads_user_id=${userId} LIMIT 1`;
+    SELECT s.ai_confidence_threshold, s.collection_days FROM collector_settings AS s
+    JOIN threads_accounts AS a ON a.threads_user_id=s.threads_user_id
+    WHERE s.threads_user_id=${userId} AND s.ai_provider='local_codex'
+      AND a.collection_enabled=TRUE
+    LIMIT 1`;
+  if (!settingRows.length) return NextResponse.json({ error: "此本機分析工作區不存在或已停用。" }, { status: 404 });
   const threshold = Number(settingRows[0]?.ai_confidence_threshold) || 75;
   const collectionDays = collectionWindowDays(settingRows[0]?.collection_days);
   const ids = body.items.map(item => String(item?.id || ""));
@@ -82,6 +90,7 @@ export async function POST(request) {
       AND published_at >= NOW() - (${collectionDays} * INTERVAL '1 day')`;
   return NextResponse.json({
     ok: true,
+    userId,
     processedCount: updates.length,
     ignoredCount,
     acceptedCount: updates.filter(item => item.ai_match).length,

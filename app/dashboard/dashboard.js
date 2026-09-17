@@ -605,6 +605,7 @@ export default function Dashboard() {
         <div><span className={settings.active ? styles.liveDot : styles.offDot}/><strong>{settings.active ? "每小時自動運行" : "自動蒐集已暫停"}</strong></div>
         <small>執行頻率：每小時一次</small>
         <small>Threads：@{data.account?.username || "已連線"}</small>
+        {data.account?.role === "owner" && <a className={styles.adminLink} href="/admin">開啟多工作區管理後臺</a>}
       </div>
     </aside>
 
