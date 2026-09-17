@@ -228,6 +228,17 @@
   line-height: 1.4;
 }
 
+.adminLink {
+  display: inline-flex;
+  margin: 13px 0 0 17px;
+  color: #ffd0c7;
+  font-size: 11px;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.adminLink:hover { color: #fff; }
+
 .liveDot,
 .offDot,
 .monitorPill i {
